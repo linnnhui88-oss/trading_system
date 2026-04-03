@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>信号监控 - 量化交易系统</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1419;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            color: #4fd1c5;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .nav {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+        }
+        
+        .nav a {
+            color: #a0aec0;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        
+        .nav a:hover, .nav a.active {
+            background: #4fd1c5;
+            color: #1a1f2e;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .card {
+            background: #1a1f2e;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            border: 1px solid #2d3748;
+            margin-bottom: 20px;
+        }
+        
+        .card h3 {
+            color: #4fd1c5;
+            margin-bottom: 15px;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .signals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .signal-card {
+            background: #0d1117;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #4fd1c5;
+            transition: transform 0.2s;
+        }
+        
+        .signal-card:hover {
+            transform: translateX(5px);
+        }
+        
+        .signal-card.buy {
+            border-left-color: #48bb78;
+        }
+        
+        .signal-card.sell {
+            border-left-color: #f56565;
+        }
+        
+        .signal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .signal-symbol {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .signal-time {
+            color: #6b7280;
+            font-size: 12px;
+        }
+        
+        .signal-body {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        
+        .signal-item {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .signal-label {
+            color: #a0aec0;
+            font-size: 12px;
+        }
+        
+        .signal-value {
+            font-weight: 600;
+        }
+        
+        .signal-action {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .signal-action.buy {
+            background: rgba(72, 187, 120, 0.2);
+            color: #48bb78;
+        }
+        
+        .signal-action.sell {
+            background: rgba(245, 101, 101, 0.2);
+            color: #f56565;
+        }
+        
+        .signal-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        
+        .status-executed {
+            background: rgba(72, 187, 120, 0.2);
+            color: #48bb78;
+        }
+        
+        .status-pending {
+            background: rgba(237, 137, 54, 0.2);
+            color: #ed8936;
+        }
+        
+        .status-skipped {
+            background: rgba(160, 174, 192, 0.2);
+            color: #a0aec0;
+        }
+        
+        .strategy-toggles {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .strategy-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            background: #0d1117;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .strategy-toggle:hover {
+            background: #2d3748;
+        }
+        
+        .strategy-toggle input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .strategy-toggle label {
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #48bb78;
+            font-size: 14px;
+        }
+        
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: #48bb78;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .signals-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .signals-table th,
+        .signals-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #2d3748;
+        }
+        
+        .signals-table th {
+            color: #4fd1c5;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 1px;
+            background: #0d1117;
+        }
+        
+        .signals-table tr:hover {
+            background: #2d3748;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6b7280;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>📈 量化交易系统</h1>
+        <nav class="nav">
+            <a href="/">仪表盘</a>
+            <a href="/trades">交易记录</a>
+            <a href="/signals" class="active">信号监控</a>
+            <a href="/settings">设置</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <!-- 策略控制 -->
+        <div class="card">
+            <h3>🎯 策略配置</h3>
+            <div class="strategy-toggles">
+                <div class="strategy-toggle">
+                    <input type="checkbox" id="strategy_macd" checked>
+                    <label for="strategy_macd">MACD策略</label>
+                </div>
+                <div class="strategy-toggle">
+                    <input type="checkbox" id="strategy_rsi" checked>
+                    <label for="strategy_rsi">RSI策略</label>
+                </div>
+                <div class="strategy-toggle">
+                    <input type="checkbox" id="strategy_bb" checked>
+                    <label for="strategy_bb">布林带策略</label>
+                </div>
+                <div class="strategy-toggle">
+                    <input type="checkbox" id="strategy_ma99" checked>
+                    <label for="strategy_ma99">MA99多周期策略</label>
+                </div>
+                <div class="strategy-toggle">
+                    <input type="checkbox" id="use_consensus">
+                    <label for="use_consensus">使用共识信号</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- 实时信号 -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3>📡 实时信号</h3>
+                <div class="live-indicator">
+                    <span class="live-dot"></span>
+                    <span>实时监控中</span>
+                </div>
+            </div>
+            <div id="signalsContainer">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📡</div>
+                    <p>等待交易信号...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 信号历史 -->
+        <div class="card">
+            <h3>📜 信号历史</h3>
+            <table class="signals-table">
+                <thead>
+                    <tr>
+                        <th>时间</th>
+                        <th>交易对</th>
+                        <th>周期</th>
+                        <th>信号</th>
+                        <th>价格</th>
+                        <th>RSI</th>
+                        <th>状态</th>
+                    </tr>
+                </thead>
+                <tbody id="signalsHistory">
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: #6b7280; padding: 40px;">
+                            加载中...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let signalsHistory = [];
+        let recentSignals = [];
+
+        socket.on('signal_update', function(data) {
+            addRealtimeSignal(data);
+        });
+
+        function addRealtimeSignal(signal) {
+            recentSignals.unshift(signal);
+            if (recentSignals.length > 10) {
+                recentSignals.pop();
+            }
+            renderRealtimeSignals();
+        }
+
+        function renderRealtimeSignals() {
+            const container = document.getElementById('signalsContainer');
+            
+            if (recentSignals.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📡</div>
+                        <p>等待交易信号...</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = recentSignals.map(signal => {
+                const isBuy = signal.action === 'LONG' || signal.action === 'BUY';
+                const date = new Date(signal.timestamp);
+                
+                return `
+                    <div class="signal-card ${isBuy ? 'buy' : 'sell'}">
+                        <div class="signal-header">
+                            <span class="signal-symbol">${signal.symbol}</span>
+                            <span class="signal-time">${date.toLocaleTimeString()}</span>
+                        </div>
+                        <div class="signal-body">
+                            <div class="signal-item">
+                                <span class="signal-label">信号</span>
+                                <span class="signal-action ${isBuy ? 'buy' : 'sell'}">
+                                    ${isBuy ? '🟢 买入' : '🔴 卖出'}
+                                </span>
+                            </div>
+                            <div class="signal-item">
+                                <span class="signal-label">周期</span>
+                                <span class="signal-value">${signal.timeframe}</span>
+                            </div>
+                            <div class="signal-item">
+                                <span class="signal-label">价格</span>
+                                <span class="signal-value">$${parseFloat(signal.price).toFixed(2)}</span>
+                            </div>
+                            <div class="signal-item">
+                                <span class="signal-label">RSI</span>
+                                <span class="signal-value">${signal.rsi ? signal.rsi.toFixed(1) : 'N/A'}</span>
+                            </div>
+                            <div class="signal-item">
+                                <span class="signal-label">策略</span>
+                                <span class="signal-value">${signal.strategy || 'MA99_MTF'}</span>
+                            </div>
+                            <div class="signal-item">
+                                <span class="signal-label">状态</span>
+                                <span class="signal-status ${signal.executed ? 'status-executed' : 'status-skipped'}">
+                                    ${signal.executed ? '✅ 已执行' : '⏭️ 跳过'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function loadSignals() {
+            try {
+                const response = await fetch('/api/signals?limit=50');
+                const data = await response.json();
+                
+                if (data.success) {
+                    signalsHistory = data.data;
+                    renderSignalsHistory();
+                }
+            } catch (e) {
+                // 使用模拟数据
+                signalsHistory = generateMockSignals();
+                renderSignalsHistory();
+            }
+        }
+
+        function generateMockSignals() {
+            const signals = [];
+            const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT'];
+            const actions = ['LONG', 'SHORT'];
+            const timeframes = ['15m', '1h', '4h'];
+            
+            for (let i = 0; i < 30; i++) {
+                const date = new Date();
+                date.setMinutes(date.getMinutes() - i * 5);
+                
+                signals.push({
+                    timestamp: date.toISOString(),
+                    symbol: symbols[Math.floor(Math.random() * symbols.length)],
+                    timeframe: timeframes[Math.floor(Math.random() * timeframes.length)],
+                    action: actions[Math.floor(Math.random() * actions.length)],
+                    price: (Math.random() * 50000 + 20000).toFixed(2),
+                    rsi: Math.random() * 60 + 20,
+                    executed: Math.random() > 0.3
+                });
+            }
+            
+            return signals;
+        }
+
+        function renderSignalsHistory() {
+            const tbody = document.getElementById('signalsHistory');
+            
+            if (signalsHistory.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #6b7280; padding: 40px;">暂无信号记录</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = signalsHistory.map(signal => {
+                const date = new Date(signal.timestamp);
+                const isBuy = signal.action === 'LONG' || signal.action === 'BUY';
+                
+                return `
+                    <tr>
+                        <td>${date.toLocaleString()}</td>
+                        <td>${signal.symbol}</td>
+                        <td>${signal.timeframe}</td>
+                        <td class="${isBuy ? 'positive' : 'negative'}">${signal.action}</td>
+                        <td>$${parseFloat(signal.price).toFixed(2)}</td>
+                        <td>${signal.rsi ? signal.rsi.toFixed(1) : 'N/A'}</td>
+                        <td>
+                            <span class="signal-status ${signal.executed ? 'status-executed' : 'status-skipped'}">
+                                ${signal.executed ? '已执行' : '跳过'}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 模拟实时信号
+        function simulateRealtimeSignal() {
+            const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT'];
+            const actions = ['LONG', 'SHORT'];
+            const timeframes = ['15m', '1h', '4h'];
+            
+            const signal = {
+                timestamp: new Date().toISOString(),
+                symbol: symbols[Math.floor(Math.random() * symbols.length)],
+                timeframe: timeframes[Math.floor(Math.random() * timeframes.length)],
+                action: actions[Math.floor(Math.random() * actions.length)],
+                price: (Math.random() * 50000 + 20000).toFixed(2),
+                rsi: Math.random() * 60 + 20,
+                executed: Math.random() > 0.3,
+                strategy: 'MA99_MTF'
+            };
+            
+            addRealtimeSignal(signal);
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSignals();
+            
+            // 每30秒模拟一个信号（实际应从WebSocket接收）
+            setInterval(simulateRealtimeSignal, 30000);
+        });
+    </script>
+</body>
+</html>

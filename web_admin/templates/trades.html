@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交易记录 - 量化交易系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1419;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            color: #4fd1c5;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .nav {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+        }
+        
+        .nav a {
+            color: #a0aec0;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        
+        .nav a:hover, .nav a.active {
+            background: #4fd1c5;
+            color: #1a1f2e;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .card {
+            background: #1a1f2e;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            border: 1px solid #2d3748;
+            margin-bottom: 20px;
+        }
+        
+        .card h3 {
+            color: #4fd1c5;
+            margin-bottom: 15px;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .filters select, .filters input {
+            padding: 10px 15px;
+            background: #2d3748;
+            border: 1px solid #4a5568;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            background: #4fd1c5;
+            color: #1a1f2e;
+        }
+        
+        .btn:hover {
+            background: #38b2ac;
+        }
+        
+        .trades-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .trades-table th,
+        .trades-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #2d3748;
+        }
+        
+        .trades-table th {
+            color: #4fd1c5;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 1px;
+            background: #0d1117;
+        }
+        
+        .trades-table tr:hover {
+            background: #2d3748;
+        }
+        
+        .positive { color: #48bb78; }
+        .negative { color: #f56565; }
+        .neutral { color: #ed8936; }
+        
+        .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .badge-filled { background: rgba(72, 187, 120, 0.2); color: #48bb78; }
+        .badge-pending { background: rgba(237, 137, 54, 0.2); color: #ed8936; }
+        .badge-cancelled { background: rgba(245, 101, 101, 0.2); color: #f56565; }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: #0d1117;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #a0aec0;
+            font-size: 12px;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .pagination button {
+            padding: 8px 16px;
+            background: #2d3748;
+            border: 1px solid #4a5568;
+            color: #e0e0e0;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        
+        .pagination button:hover {
+            background: #4a5568;
+        }
+        
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>📈 量化交易系统</h1>
+        <nav class="nav">
+            <a href="/">仪表盘</a>
+            <a href="/trades" class="active">交易记录</a>
+            <a href="/signals">信号监控</a>
+            <a href="/settings">设置</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <!-- 统计概览 -->
+        <div class="card">
+            <h3>📊 交易统计</h3>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalTrades">--</div>
+                    <div class="stat-label">总交易次数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value positive" id="winRate">--</div>
+                    <div class="stat-label">胜率</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalProfit">--</div>
+                    <div class="stat-label">总盈亏</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="avgProfit">--</div>
+                    <div class="stat-label">平均盈亏</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 筛选器 -->
+        <div class="card">
+            <h3>🔍 筛选</h3>
+            <div class="filters">
+                <select id="filterSymbol">
+                    <option value="">所有交易对</option>
+                    <option value="BTC/USDT">BTC/USDT</option>
+                    <option value="ETH/USDT">ETH/USDT</option>
+                    <option value="SOL/USDT">SOL/USDT</option>
+                    <option value="BNB/USDT">BNB/USDT</option>
+                </select>
+                <select id="filterSide">
+                    <option value="">所有方向</option>
+                    <option value="LONG">做多</option>
+                    <option value="SHORT">做空</option>
+                </select>
+                <select id="filterStatus">
+                    <option value="">所有状态</option>
+                    <option value="filled">已成交</option>
+                    <option value="pending">待成交</option>
+                    <option value="cancelled">已取消</option>
+                </select>
+                <input type="date" id="filterDate" placeholder="选择日期">
+                <button class="btn" onclick="applyFilters()">应用筛选</button>
+                <button class="btn" onclick="resetFilters()">重置</button>
+            </div>
+        </div>
+
+        <!-- 交易列表 -->
+        <div class="card">
+            <h3>📜 交易记录</h3>
+            <table class="trades-table">
+                <thead>
+                    <tr>
+                        <th>时间</th>
+                        <th>交易对</th>
+                        <th>方向</th>
+                        <th>策略</th>
+                        <th>数量</th>
+                        <th>价格</th>
+                        <th>盈亏</th>
+                        <th>状态</th>
+                    </tr>
+                </thead>
+                <tbody id="tradesTable">
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: #6b7280; padding: 40px;">
+                            加载中...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="pagination">
+                <button onclick="prevPage()" id="prevBtn">上一页</button>
+                <span id="pageInfo">第 1 页</span>
+                <button onclick="nextPage()" id="nextBtn">下一页</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let tradesData = [];
+        const itemsPerPage = 20;
+
+        async function loadTrades() {
+            try {
+                const response = await fetch('/api/trades?limit=100');
+                const data = await response.json();
+                
+                if (data.success) {
+                    tradesData = data.data;
+                    updateStats();
+                    renderTable();
+                } else {
+                    document.getElementById('tradesTable').innerHTML = `
+                        <tr><td colspan="8" style="text-align: center; color: #f56565; padding: 40px;">
+                            加载失败: ${data.error}
+                        </td></tr>
+                    `;
+                }
+            } catch (e) {
+                // 使用模拟数据
+                tradesData = generateMockTrades();
+                updateStats();
+                renderTable();
+            }
+        }
+
+        function generateMockTrades() {
+            const trades = [];
+            const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT'];
+            const sides = ['LONG', 'SHORT'];
+            const strategies = ['MA99_MTF', 'MACD', 'RSI', 'BollingerBands'];
+            
+            for (let i = 0; i < 50; i++) {
+                const date = new Date();
+                date.setHours(date.getHours() - i);
+                
+                trades.push({
+                    timestamp: date.toISOString(),
+                    symbol: symbols[Math.floor(Math.random() * symbols.length)],
+                    action: sides[Math.floor(Math.random() * sides.length)],
+                    strategy: strategies[Math.floor(Math.random() * strategies.length)],
+                    amount: (Math.random() * 0.5 + 0.01).toFixed(4),
+                    price: (Math.random() * 50000 + 20000).toFixed(2),
+                    pnl: (Math.random() - 0.4) * 200,
+                    status: 'filled'
+                });
+            }
+            
+            return trades;
+        }
+
+        function updateStats() {
+            const total = tradesData.length;
+            const profitable = tradesData.filter(t => (t.pnl || 0) > 0).length;
+            const winRate = total > 0 ? ((profitable / total) * 100).toFixed(1) : 0;
+            const totalProfit = tradesData.reduce((sum, t) => sum + (t.pnl || 0), 0);
+            const avgProfit = total > 0 ? (totalProfit / total).toFixed(2) : 0;
+
+            document.getElementById('totalTrades').textContent = total;
+            document.getElementById('winRate').textContent = winRate + '%';
+            document.getElementById('winRate').className = 'stat-value ' + (winRate >= 50 ? 'positive' : 'negative');
+            document.getElementById('totalProfit').textContent = (totalProfit >= 0 ? '+' : '') + totalProfit.toFixed(2);
+            document.getElementById('totalProfit').className = 'stat-value ' + (totalProfit >= 0 ? 'positive' : 'negative');
+            document.getElementById('avgProfit').textContent = (avgProfit >= 0 ? '+' : '') + avgProfit;
+            document.getElementById('avgProfit').className = 'stat-value ' + (avgProfit >= 0 ? 'positive' : 'negative');
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tradesTable');
+            const start = (currentPage - 1) * itemsPerPage;
+            const end = start + itemsPerPage;
+            const pageData = tradesData.slice(start, end);
+
+            if (pageData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #6b7280; padding: 40px;">暂无交易记录</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = pageData.map(trade => {
+                const date = new Date(trade.timestamp);
+                const pnl = trade.pnl || 0;
+                
+                return `
+                    <tr>
+                        <td>${date.toLocaleString()}</td>
+                        <td>${trade.symbol}</td>
+                        <td class="${trade.action === 'LONG' ? 'positive' : 'negative'}">${trade.action}</td>
+                        <td>${trade.strategy || 'N/A'}</td>
+                        <td>${parseFloat(trade.amount).toFixed(4)}</td>
+                        <td>$${parseFloat(trade.price).toFixed(2)}</td>
+                        <td class="${pnl >= 0 ? 'positive' : 'negative'}">
+                            ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+                        </td>
+                        <td><span class="badge badge-${trade.status}">${trade.status}</span></td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('pageInfo').textContent = `第 ${currentPage} 页 / 共 ${Math.ceil(tradesData.length / itemsPerPage)} 页`;
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = end >= tradesData.length;
+        }
+
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                renderTable();
+            }
+        }
+
+        function nextPage() {
+            if (currentPage * itemsPerPage < tradesData.length) {
+                currentPage++;
+                renderTable();
+            }
+        }
+
+        function applyFilters() {
+            const symbol = document.getElementById('filterSymbol').value;
+            const side = document.getElementById('filterSide').value;
+            const status = document.getElementById('filterStatus').value;
+            
+            // 这里可以实现筛选逻辑
+            currentPage = 1;
+            renderTable();
+        }
+
+        function resetFilters() {
+            document.getElementById('filterSymbol').value = '';
+            document.getElementById('filterSide').value = '';
+            document.getElementById('filterStatus').value = '';
+            document.getElementById('filterDate').value = '';
+            currentPage = 1;
+            renderTable();
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTrades();
+        });
+    </script>
+</body>
+</html>

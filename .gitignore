@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# 环境变量（包含敏感信息）
+.env
+
+# 数据文件
+data/*.db
+data/*.json
+*.db
+*.sqlite
+
+# 日志
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 信号记忆文件
+signal_memory.json
