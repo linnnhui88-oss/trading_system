@@ -182,6 +182,42 @@ def close_all_positions():
 
 # ==================== WebSocket ====================
 
+@app.route('/api/ohlcv')
+def api_ohlcv():
+    """获取K线数据"""
+    try:
+        symbol = request.args.get('symbol', 'BTC/USDT')
+        timeframe = request.args.get('timeframe', '1h')
+        limit = request.args.get('limit', 100, type=int)
+        
+        exchange, _, _ = get_components()
+        
+        if exchange is None:
+            return jsonify({'success': False, 'error': '交易所连接失败'})
+        
+        ohlcv = exchange.get_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        
+        if ohlcv is None:
+            return jsonify({'success': False, 'error': '获取K线数据失败'})
+        
+        # 转换为前端需要的格式
+        data = []
+        for candle in ohlcv:
+            data.append({
+                'time': candle[0],  # timestamp
+                'open': candle[1],
+                'high': candle[2],
+                'low': candle[3],
+                'close': candle[4],
+                'volume': candle[5]
+            })
+        
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        logger.error(f"获取K线数据失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @socketio.on('connect')
 def handle_connect():
     """客户端连接"""
