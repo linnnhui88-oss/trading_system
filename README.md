@@ -46,7 +46,7 @@
 
 1. **克隆仓库**
 ```bash
-git clone https://github.com/yourusername/trading_system.git
+git clone https://github.com/linnnhui88-oss/trading_system.git
 cd trading_system
 ```
 
