@@ -1,123 +1,215 @@
-# 量化交易系统
+# 🤖 自动化交易生存指南 - 量化交易系统
 
-基于MA99多时间框架共振策略的自动化加密货币交易系统。
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Flask](https://img.shields.io/badge/flask-2.0+-green.svg)](https://flask.palletsprojects.com/)
+[![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-## 功能特性
+一个基于Python的加密货币量化交易系统，支持多策略信号、AI辅助决策、实时Web监控和自动交易执行。
 
-- 📊 **MTF策略引擎** - 多时间框架共振确认交易信号
-- 🤖 **自动交易** - 信号触发自动下单
-- 🌐 **Web管理页面** - 实时监控和操作
-- 📱 **Telegram通知** - 实时推送交易信号
-- 🧠 **AI分析** - Gemini AI提供交易建议
-- ⚡ **风险控制** - 仓位管理、止损止盈
+## ✨ 功能特性
 
-## 系统要求
+### 📊 策略系统
+- **MA99多周期共振策略**：趋势跟踪 + 多周期共振过滤
+- **多策略共识模式**：支持多个策略同时确认信号
+- **AI辅助决策**：集成Gemini AI进行信号分析
+- **信号记忆系统**：防止重复开仓
 
+### 🌐 Web管理界面
+- **实时仪表盘**：余额、持仓、盈亏实时监控
+- **信号监控**：实时信号日志、策略运行状态
+- **交易记录**：历史交易查询、盈利曲线
+- **系统设置**：参数配置、风险管理
+
+### ⚡ 实时功能
+- **WebSocket实时推送**：信号、日志、状态实时更新
+- **60秒心跳机制**：系统健康监控
+- **自动刷新**：页面数据自动同步
+
+### 🛡️ 风险管理
+- **仓位控制**：最大持仓金额、数量限制
+- **每日止损**：单日最大亏损限制
+- **动态止盈止损**：基于ATR的动态计算
+- **紧急停止**：一键平仓停止交易
+
+### 📱 通知系统
+- **Telegram通知**：交易信号、成交提醒
+- **邮件通知**：支持SMTP邮件提醒
+- **Web日志**：详细的策略执行日志
+
+## 🚀 快速开始
+
+### 环境要求
 - Python 3.8+
 - Windows/Linux/macOS
-- 代理（国内访问币安需要）
 
-## 快速开始
+### 安装步骤
 
-### 1. 克隆仓库
+1. **克隆仓库**
 ```bash
 git clone https://github.com/yourusername/trading_system.git
 cd trading_system
 ```
 
-### 2. 安装依赖
+2. **创建虚拟环境**
+```bash
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Linux/Mac
+source venv/bin/activate
+```
+
+3. **安装依赖**
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. 配置环境变量
+4. **配置环境变量**
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，填入你的API密钥
+# 编辑 .env 文件，填写你的API密钥和配置
 ```
 
-### 4. 启动系统
+5. **启动Web服务器**
 ```bash
-# Windows
-start.bat
-
-# Linux/Mac
-./start.sh
+python -m web_admin.app
 ```
 
-### 5. 访问管理页面
-打开浏览器访问 http://localhost:5000
+6. **访问Web界面**
+打开浏览器访问 http://127.0.0.1:5000
 
-## 配置说明
+### 启动策略引擎
 
-编辑 `.env` 文件：
-
-```env
-# 币安API密钥（需要合约交易权限）
-BINANCE_API_KEY=your_api_key
-BINANCE_SECRET_KEY=your_secret_key
-
-# Telegram通知（可选）
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
-
-# Gemini AI（可选）
-GEMINI_API_KEY=your_gemini_key
-
-# 代理配置（国内需要）
-PROXY_URL=http://127.0.0.1:7897
-
-# 交易参数
-MAX_POSITION_USDT=1000        # 最大持仓金额
-MAX_DAILY_LOSS_USDT=500       # 每日最大亏损
-DEFAULT_LEVERAGE=3            # 默认杠杆
-STOP_LOSS_PERCENT=2           # 止损比例
-TAKE_PROFIT_PERCENT=4         # 止盈比例
+在Web界面的"信号监控"页面点击"▶️ 启动策略"按钮，或运行：
+```bash
+python run_strategy.py
 ```
 
-## 项目结构
+## 📁 项目结构
 
 ```
 trading_system/
-├── trading_core/          # 核心交易模块
-│   ├── exchange_client.py # 交易所API封装
-│   ├── risk_manager.py    # 风险管理
-│   └── order_executor.py  # 订单执行
-├── strategy/              # 策略模块
+├── web_admin/              # Web管理界面
+│   ├── app.py             # Flask应用主文件
+│   └── templates/         # HTML模板
+│       ├── dashboard.html # 仪表盘
+│       ├── signals.html   # 信号监控
+│       ├── trades.html    # 交易记录
+│       └── settings.html  # 系统设置
+├── trading_core/          # 交易核心模块
+│   ├── exchange_client.py # 交易所客户端
+│   ├── risk_manager.py    # 风险管理器
+│   ├── order_executor.py  # 订单执行器
+│   ├── strategy_engine_adapter.py # 策略引擎适配器
+│   └── strategies/        # 策略实现
+├── strategy/              # 原始策略代码
 │   └── strategy_engine.py # MA99策略引擎
-├── web_admin/             # Web管理页面
-│   ├── app.py            # Flask后端
-│   └── templates/        # HTML页面
-├── data/                  # 数据存储
-├── .env.example          # 环境变量示例
-├── requirements.txt      # Python依赖
-├── start.bat            # Windows启动脚本
-├── start.sh             # Linux/Mac启动脚本
-└── README.md            # 说明文档
+├── data/                  # 数据文件
+│   ├── trade_signals.json # 信号日志
+│   └── signals_history.jsonl # 信号历史
+├── .env.example           # 环境变量示例
+├── requirements.txt       # Python依赖
+└── README.md             # 项目说明
 ```
 
-## 安全提示
+## ⚙️ 配置说明
 
-⚠️ **重要安全提醒：**
+### 交易所API配置
+```env
+BINANCE_API_KEY=your_binance_api_key
+BINANCE_SECRET_KEY=your_binance_secret_key
+PROXY_URL=http://127.0.0.1:7897  # 如果需要代理
+```
 
-1. **API密钥安全**
-   - 只开启"读取"和"合约交易"权限
-   - 不要开启"提现"权限
-   - 绑定IP白名单
+### Telegram通知配置（可选）
+```env
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+```
 
-2. **资金安全**
-   - 先用测试网验证策略
-   - 只投入可承受亏损的资金
-   - 设置合理的风险控制参数
+### 交易参数配置
+```env
+MAX_POSITION_USDT=50          # 最大持仓金额（USDT）
+MAX_DAILY_LOSS_USDT=30        # 每日最大亏损
+DEFAULT_LEVERAGE=3            # 默认杠杆倍数
+MAX_POSITIONS_COUNT=1         # 最大持仓数量
+```
 
-3. **隐私保护**
-   - `.env` 文件包含敏感信息，不要上传到GitHub
-   - 已添加到 `.gitignore`
+## 🖥️ 使用指南
 
-## 免责声明
+### 1. 仪表盘
+- 查看账户余额、未实现盈亏
+- 查看当前持仓列表
+- 查看实时K线图表
+- 控制自动交易开关
 
-本系统仅供学习和研究使用，不构成投资建议。加密货币交易风险极高，可能导致全部本金损失。使用本系统产生的任何盈亏由用户自行承担。
+### 2. 信号监控
+- 查看策略运行状态
+- 监控实时信号日志
+- 查看信号历史记录
+- 启动/停止策略引擎
 
-## 许可证
+### 3. 交易记录
+- 查看历史交易记录
+- 查看盈利曲线
+- 统计分析（胜率、盈亏比等）
 
-MIT License
+### 4. 系统设置
+- 配置API密钥
+- 设置交易参数
+- 配置通知方式
+- 风险管理设置
+
+## 🔒 安全提示
+
+1. **保护API密钥**：不要将`.env`文件提交到GitHub
+2. **使用代理**：建议通过代理连接交易所API
+3. **限制IP**：在交易所设置IP白名单
+4. **小额测试**：首次使用建议用小额资金测试
+5. **定期备份**：定期备份交易数据和配置
+
+## 🐛 故障排除
+
+### 策略引擎无法启动
+1. 检查Web服务器是否正常运行
+2. 检查交易所API连接是否正常
+3. 查看Web服务器日志排查错误
+
+### 无法接收信号
+1. 检查策略引擎是否已启动
+2. 检查信号监控页面的日志输出
+3. 检查网络连接是否正常
+
+### 交易未执行
+1. 检查自动交易是否已开启
+2. 检查风险管理参数设置
+3. 检查账户余额是否充足
+
+## 📝 更新日志
+
+### v2.0 (2026-04-07)
+- ✅ 新增Web管理界面
+- ✅ 新增实时信号监控
+- ✅ 新增策略运行状态显示
+- ✅ 新增WebSocket实时推送
+- ✅ 新增60秒心跳机制
+- ✅ 新增启动/停止策略按钮
+- ✅ 优化策略引擎性能
+
+## 🤝 贡献指南
+
+欢迎提交Issue和Pull Request！
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+
+## ⚠️ 免责声明
+
+本项目仅供学习和研究使用，不构成投资建议。加密货币交易风险极高，可能导致资金损失，请谨慎使用。
+
+---
+
+**注意**：使用本系统前请确保你了解量化交易的风险，并建议先用模拟账户或小资金进行测试。

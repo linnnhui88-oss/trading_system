@@ -25,6 +25,10 @@ class ExchangeClient:
             # 代理配置
             proxy = os.getenv('PROXY_URL', 'http://127.0.0.1:7897')
             
+            # 设置环境变量代理
+            os.environ['HTTP_PROXY'] = proxy
+            os.environ['HTTPS_PROXY'] = proxy
+            
             exchange_config = {
                 'enableRateLimit': True,
                 'proxies': {
@@ -46,9 +50,12 @@ class ExchangeClient:
                 })
                 self.exchange = ccxt.binance(exchange_config)
             
-            # 测试连接
-            self.exchange.load_markets()
-            logger.info("✅ 交易所连接成功")
+            # 测试连接 - 使用公开API
+            try:
+                self.exchange.fetch_ticker('BTC/USDT')
+                logger.info("✅ 交易所连接成功")
+            except Exception as e:
+                logger.warning(f"⚠️ 交易所连接测试失败: {e}")
             
         except Exception as e:
             logger.error(f"❌ 交易所连接失败: {e}")
@@ -70,26 +77,71 @@ class ExchangeClient:
     def get_positions(self) -> List[Dict]:
         """获取当前持仓"""
         try:
+            # 获取所有交易对的持仓
             positions = self.exchange.fetch_positions()
+            logger.info(f"[Exchange] fetch_positions returned: {len(positions)} positions")
+            
+            # 同时尝试使用 fetch_balance 获取持仓信息
+            balance = self.exchange.fetch_balance()
+            positions_info = balance.get('info', {}).get('positions', [])
+            logger.info(f"[Exchange] Balance positions: {len(positions_info)}")
+            
             active_positions = []
             
+            # 处理 fetch_positions 返回的数据
             for pos in positions:
                 contracts = float(pos.get('contracts', 0))
-                if contracts != 0:
+                notional = float(pos.get('notional', 0))
+                
+                logger.info(f"[Exchange] Position from fetch_positions: {pos.get('symbol')}, contracts={contracts}, notional={notional}")
+                logger.info(f"[Exchange] Position details: {pos}")
+                
+                # 使用 notional 或 contracts 来判断是否有持仓
+                if contracts != 0 or abs(notional) > 0.01:
+                    # 安全获取杠杆值
+                    leverage_val = pos.get('leverage', 1)
+                    if leverage_val is None:
+                        leverage_val = 1
+                    
                     active_positions.append({
                         'symbol': pos['symbol'],
-                        'side': 'LONG' if contracts > 0 else 'SHORT',
-                        'contracts': abs(contracts),
-                        'entry_price': float(pos.get('entryPrice', 0)),
-                        'mark_price': float(pos.get('markPrice', 0)),
-                        'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
-                        'leverage': int(pos.get('leverage', 1)),
-                        'liquidation_price': float(pos.get('liquidationPrice', 0))
+                        'side': 'LONG' if (contracts > 0 or notional > 0) else 'SHORT',
+                        'contracts': abs(contracts) if contracts != 0 else abs(notional),
+                        'entry_price': float(pos.get('entryPrice') or pos.get('entry_price') or 0),
+                        'mark_price': float(pos.get('markPrice') or pos.get('mark_price') or 0),
+                        'unrealized_pnl': float(pos.get('unrealizedPnl') or pos.get('unrealized_pnl') or 0),
+                        'leverage': int(leverage_val),
+                        'liquidation_price': float(pos.get('liquidationPrice') or 0)
                     })
+            
+            # 如果 fetch_positions 没有返回数据，尝试从 balance 获取
+            if not active_positions and positions_info:
+                for pos in positions_info:
+                    position_amt = float(pos.get('positionAmt', 0))
+                    if position_amt != 0:
+                        leverage_val = pos.get('leverage', 1)
+                        if leverage_val is None:
+                            leverage_val = 1
+                        active_positions.append({
+                            'symbol': pos['symbol'],
+                            'side': 'LONG' if position_amt > 0 else 'SHORT',
+                            'contracts': abs(position_amt),
+                            'entry_price': float(pos.get('entryPrice') or 0),
+                            'mark_price': float(pos.get('markPrice') or 0),
+                            'unrealized_pnl': float(pos.get('unrealizedProfit') or 0),
+                            'leverage': int(leverage_val),
+                            'liquidation_price': float(pos.get('liquidationPrice') or 0)
+                        })
+            
+            logger.info(f"[Exchange] Final active positions: {len(active_positions)}")
+            for p in active_positions:
+                logger.info(f"[Exchange] Active: {p['symbol']} {p['side']} x{p['leverage']}")
             
             return active_positions
         except Exception as e:
             logger.error(f"获取持仓失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
     
     def get_ohlcv(self, symbol: str, timeframe: str = '1h', limit: int = 100) -> Optional[List]:
@@ -107,14 +159,14 @@ class ExchangeClient:
             ticker = self.exchange.fetch_ticker(symbol)
             return {
                 'symbol': symbol,
-                'last': ticker['last'],
-                'bid': ticker['bid'],
-                'ask': ticker['ask'],
-                'high': ticker['high'],
-                'low': ticker['low'],
-                'volume': ticker['volume'],
-                'change': ticker['change'],
-                'percentage': ticker['percentage']
+                'last': ticker.get('last'),
+                'bid': ticker.get('bid'),
+                'ask': ticker.get('ask'),
+                'high': ticker.get('high'),
+                'low': ticker.get('low'),
+                'volume': ticker.get('volume'),
+                'change': ticker.get('change'),
+                'percentage': ticker.get('percentage')
             }
         except Exception as e:
             logger.error(f"获取行情失败: {e}")
@@ -138,7 +190,8 @@ class ExchangeClient:
         try:
             # 调整精度
             market = self.exchange.market(symbol)
-            amount = self._adjust_precision(amount, market['precision']['amount'])
+            precision = market.get('precision', {}).get('amount', 8)
+            amount = self._adjust_precision(amount, precision)
             
             order = self.exchange.create_order(
                 symbol=symbol,
@@ -211,10 +264,29 @@ class ExchangeClient:
             logger.error(f"❌ 杠杆设置失败: {e}")
             return False
     
-    def _adjust_precision(self, value: float, precision: int) -> float:
-        """调整数值精度"""
-        quantize_str = '0.' + '0' * precision
-        return float(Decimal(str(value)).quantize(Decimal(quantize_str), rounding=ROUND_DOWN))
+    def _adjust_precision(self, value: float, precision) -> float:
+        """调整数值精度
+        
+        Args:
+            value: 原始数值
+            precision: 精度（可以是整数位数，也可以是最小精度如0.001）
+        """
+        try:
+            # 如果 precision 是小于1的小数（如0.001），转换为整数位数
+            if isinstance(precision, float) and precision < 1:
+                # 计算小数位数（0.001 -> 3）
+                precision = len(str(precision).split('.')[-1])
+            elif isinstance(precision, str):
+                precision = int(precision)
+            else:
+                precision = int(precision) if precision is not None else 8
+            
+            quantize_str = '0.' + '0' * precision
+            result = float(Decimal(str(value)).quantize(Decimal(quantize_str), rounding=ROUND_DOWN))
+            return result
+        except Exception as e:
+            logger.warning(f"精度调整失败: {e}, 返回原始值")
+            return float(value)
 
     def get_current_price(self, symbol: str) -> Optional[float]:
         """获取当前价格"""

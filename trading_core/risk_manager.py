@@ -85,13 +85,21 @@ class RiskManager:
             price: 当前价格
             confidence: 信号置信度 (0-1)
         """
-        # 基础仓位 = 最大仓位 / 10 * 置信度
-        base_position = (self.max_position_usdt / 10) * confidence
+        # 基础仓位 = 最大仓位 * 置信度
+        base_position = self.max_position_usdt * confidence
         
         # 根据价格计算数量
         amount = base_position / price
         
-        logger.info(f"📊 仓位计算: {symbol} 价格${price:.2f} 数量{amount:.4f}")
+        # 确保数量不小于最小下单量 (0.001 BTC)
+        min_amount = 0.001
+        if amount < min_amount:
+            # 如果计算的金额太小，使用最小下单量
+            amount = min_amount
+            actual_value = amount * price
+            logger.warning(f"⚠️ {symbol} 仓位计算结果({amount * price:.2f} USDT)太小，调整为最小下单量: {min_amount} ({actual_value:.2f} USDT)")
+        
+        logger.info(f"📊 仓位计算: {symbol} 价格${price:.2f} 数量{amount:.6f} (金额约${amount * price:.2f} USDT)")
         return amount
     
     def calculate_stop_loss(self, entry_price: float, side: str) -> float:

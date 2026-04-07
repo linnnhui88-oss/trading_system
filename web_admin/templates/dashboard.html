@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>量化交易系统 - 仪表盘</title>
+    <title>自动化交易生存指南-量化交易系统 - 仪表盘 v2.0</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <style>
         * {
@@ -194,8 +194,31 @@
         }
         
         .chart-container {
-            height: 400px;
+            height: 550px;
             margin-top: 20px;
+            position: relative;
+        }
+        
+        #chartSymbol, #chartTimeframe {
+            padding: 8px 15px;
+            font-size: 14px;
+            background: #2d3748;
+            color: #e0e0e0;
+            border: 1px solid #4fd1c5;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        
+        #chartSymbol:focus, #chartTimeframe:focus {
+            outline: none;
+            border-color: #38b2ac;
+        }
+        
+        optgroup {
+            background: #1a1f2e;
+            color: #4fd1c5;
+            font-weight: bold;
         }
         
         .control-panel {
@@ -282,7 +305,7 @@
     </div>
 
     <header class="header">
-        <h1>📈 量化交易系统</h1>
+        <h1>📈 自动化交易生存指南-量化交易系统</h1>
         <nav class="nav">
             <a href="/" class="active">仪表盘</a>
             <a href="/trades">交易记录</a>
@@ -343,14 +366,35 @@
         </div>
 
         <!-- 实时K线图表 -->
-        <div class="card">
+        <div class="card" style="margin-bottom: 20px;">
             <h3>📊 实时K线图表</h3>
             <div style="margin-bottom: 15px;">
                 <select id="chartSymbol" onchange="updateChart()">
-                    <option value="BTC/USDT">BTC/USDT</option>
-                    <option value="ETH/USDT">ETH/USDT</option>
-                    <option value="SOL/USDT">SOL/USDT</option>
-                    <option value="BNB/USDT">BNB/USDT</option>
+                    <optgroup label="主流币">
+                        <option value="BTC/USDT">BTC/USDT</option>
+                        <option value="ETH/USDT">ETH/USDT</option>
+                        <option value="SOL/USDT">SOL/USDT</option>
+                        <option value="BNB/USDT">BNB/USDT</option>
+                        <option value="XRP/USDT">XRP/USDT</option>
+                        <option value="DOGE/USDT">DOGE/USDT</option>
+                        <option value="ADA/USDT">ADA/USDT</option>
+                        <option value="AVAX/USDT">AVAX/USDT</option>
+                    </optgroup>
+                    <optgroup label="Layer 2 & DeFi">
+                        <option value="MATIC/USDT">MATIC/USDT</option>
+                        <option value="ARB/USDT">ARB/USDT</option>
+                        <option value="OP/USDT">OP/USDT</option>
+                        <option value="LINK/USDT">LINK/USDT</option>
+                        <option value="UNI/USDT">UNI/USDT</option>
+                        <option value="AAVE/USDT">AAVE/USDT</option>
+                    </optgroup>
+                    <optgroup label="Meme & 其他">
+                        <option value="SHIB/USDT">SHIB/USDT</option>
+                        <option value="PEPE/USDT">PEPE/USDT</option>
+                        <option value="WIF/USDT">WIF/USDT</option>
+                        <option value="BONK/USDT">BONK/USDT</option>
+                        <option value="FLOKI/USDT">FLOKI/USDT</option>
+                    </optgroup>
                 </select>
                 <select id="chartTimeframe" onchange="updateChart()">
                     <option value="15m">15分钟</option>
@@ -363,7 +407,7 @@
         </div>
 
         <!-- 持仓列表 -->
-        <div class="card">
+        <div class="card" style="margin-bottom: 20px;">
             <h3>📋 当前持仓</h3>
             <table class="positions-table">
                 <thead>
@@ -387,7 +431,7 @@
         </div>
 
         <!-- 风险状态 -->
-        <div class="card">
+        <div class="card" style="margin-bottom: 20px;">
             <h3>⚠️ 风险管理</h3>
             <div id="riskStatus">
                 <div class="risk-meter">
@@ -426,30 +470,42 @@
     </div>
 
     <script>
+        console.log('[Dashboard] Script loading...');
+        
         const socket = io();
         let currentData = {};
         let chartData = {};
+        
+        console.log('[Dashboard] Socket.io initialized');
 
         // Socket.io 连接事件
         socket.on('connect', function() {
+            console.log('[Dashboard] Socket connected!');
             document.getElementById('connectionStatus').className = 'status-indicator status-online';
             document.getElementById('connectionText').textContent = '已连接';
             addLog('系统', '已连接到服务器', 'info');
         });
 
         socket.on('disconnect', function() {
+            console.log('[Dashboard] Socket disconnected!');
             document.getElementById('connectionStatus').className = 'status-indicator status-offline';
             document.getElementById('connectionText').textContent = '已断开';
             addLog('系统', '与服务器断开连接', 'error');
         });
 
         socket.on('status_update', function(data) {
+            console.log('[Dashboard] Received status_update:', data);
             currentData = data;
             updateDashboard(data);
+        });
+        
+        socket.on('connect_error', function(error) {
+            console.error('[Dashboard] Socket connection error:', error);
         });
 
         // 更新仪表盘
         function updateDashboard(data) {
+            console.log('[Dashboard] Updating with data:', data);
             // 更新余额
             if (data.balance) {
                 document.getElementById('balanceValue').textContent = 
@@ -487,11 +543,14 @@
 
         // 更新持仓表格
         function updatePositionsTable(positions) {
+            console.log('[Positions] Updating with:', positions);
             const tbody = document.getElementById('positionsTable');
             if (!positions || positions.length === 0) {
+                console.log('[Positions] No positions to display');
                 tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #6b7280;">暂无持仓</td></tr>';
                 return;
             }
+            console.log('[Positions] Rendering', positions.length, 'positions');
 
             tbody.innerHTML = positions.map(pos => `
                 <tr>
@@ -523,114 +582,163 @@
             document.getElementById('trailingStopPercent').textContent = status.trailing_stop_percent + '%';
         }
 
+        // TradingView Lightweight Charts 实例
+        let chart = null;
+        let candlestickSeries = null;
+        let volumeSeries = null;
+
+        // 初始化图表
+        function initChart() {
+            const chartContainer = document.getElementById('candlestickChart');
+            
+            // 创建图表
+            chart = LightweightCharts.createChart(chartContainer, {
+                layout: {
+                    background: { color: '#0d1117' },
+                    textColor: '#e0e0e0',
+                },
+                grid: {
+                    vertLines: { color: '#2d3748' },
+                    horzLines: { color: '#2d3748' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                rightPriceScale: {
+                    borderColor: '#2d3748',
+                    scaleMargins: {
+                        top: 0.1,
+                        bottom: 0.2,
+                    },
+                    autoScale: true,
+                    alignLabels: true,
+                },
+                leftPriceScale: {
+                    visible: false,
+                },
+                timeScale: {
+                    borderColor: '#2d3748',
+                    timeVisible: true,
+                    secondsVisible: false,
+                    rightOffset: 10,
+                    barSpacing: 8,
+                },
+                handleScroll: {
+                    vertTouchDrag: false,
+                },
+                handleScale: {
+                    axisPressedMouseMove: {
+                        time: true,
+                        price: false,
+                    },
+                },
+            });
+
+            // 创建K线系列
+            candlestickSeries = chart.addCandlestickSeries({
+                upColor: '#48bb78',
+                downColor: '#f56565',
+                borderUpColor: '#48bb78',
+                borderDownColor: '#f56565',
+                wickUpColor: '#48bb78',
+                wickDownColor: '#f56565',
+            });
+
+            // 创建成交量系列（在底部）
+            volumeSeries = chart.addHistogramSeries({
+                color: '#26a69a',
+                priceFormat: {
+                    type: 'volume',
+                },
+                priceScaleId: 'volume',
+                scaleMargins: {
+                    top: 0.85,
+                    bottom: 0.05,
+                },
+            });
+            
+            // 设置成交量价格轴
+            chart.priceScale('volume').applyOptions({
+                scaleMargins: {
+                    top: 0.85,
+                    bottom: 0.05,
+                },
+                borderColor: '#2d3748',
+                visible: true,
+                alignLabels: false,
+            });
+
+            // 响应式调整
+            window.addEventListener('resize', () => {
+                chart.applyOptions({
+                    width: chartContainer.clientWidth,
+                    height: chartContainer.clientHeight,
+                });
+            });
+        }
+
         // 更新K线图表
         async function updateChart() {
             const symbol = document.getElementById('chartSymbol').value;
             const timeframe = document.getElementById('chartTimeframe').value;
             
             try {
-                // 这里应该调用API获取K线数据
-                // 模拟数据用于演示
                 const response = await fetch(`/api/ohlcv?symbol=${symbol}&timeframe=${timeframe}`);
                 if (response.ok) {
-                    const data = await response.json();
-                    if (data.success) {
-                        renderCandlestickChart(data.data);
+                    const result = await response.json();
+                    if (result.success) {
+                        renderCandlestickChart(result.data);
                     }
                 }
             } catch (e) {
-                console.log('使用模拟数据渲染图表');
-                renderCandlestickChart(generateMockData());
+                console.error('获取K线数据失败:', e);
+                addLog('错误', '获取K线数据失败', 'error');
             }
-        }
-
-        // 生成模拟K线数据
-        function generateMockData() {
-            const data = [];
-            let price = 45000;
-            const now = new Date();
-            
-            for (let i = 100; i >= 0; i--) {
-                const time = new Date(now.getTime() - i * 3600000);
-                const open = price;
-                const change = (Math.random() - 0.5) * 500;
-                const close = open + change;
-                const high = Math.max(open, close) + Math.random() * 200;
-                const low = Math.min(open, close) - Math.random() * 200;
-                const volume = Math.random() * 1000 + 500;
-                
-                data.push({
-                    time: time.toISOString(),
-                    open: open,
-                    high: high,
-                    low: low,
-                    close: close,
-                    volume: volume
-                });
-                
-                price = close;
-            }
-            
-            return data;
         }
 
         // 渲染K线图
         function renderCandlestickChart(data) {
-            const times = data.map(d => d.time);
-            const opens = data.map(d => d.open);
-            const highs = data.map(d => d.high);
-            const lows = data.map(d => d.low);
-            const closes = data.map(d => d.close);
-            const volumes = data.map(d => d.volume);
+            if (!chart) {
+                initChart();
+            }
 
-            const trace = {
-                x: times,
-                open: opens,
-                high: highs,
-                low: lows,
-                close: closes,
-                type: 'candlestick',
-                name: 'K线',
-                increasing: {line: {color: '#48bb78'}, fillcolor: '#48bb78'},
-                decreasing: {line: {color: '#f56565'}, fillcolor: '#f56565'}
-            };
+            if (!data || data.length === 0) {
+                addLog('图表', '暂无数据', 'warning');
+                return;
+            }
 
-            const volumeTrace = {
-                x: times,
-                y: volumes,
-                type: 'bar',
-                name: '成交量',
-                yaxis: 'y2',
-                marker: {
-                    color: closes.map((c, i) => c >= opens[i] ? '#48bb78' : '#f56565')
-                }
-            };
+            // 转换数据格式
+            const candleData = data.map(d => ({
+                time: d.time / 1000, // 转换为秒级时间戳
+                open: d.open,
+                high: d.high,
+                low: d.low,
+                close: d.close,
+            }));
 
-            const layout = {
-                paper_bgcolor: 'transparent',
-                plot_bgcolor: '#0d1117',
-                font: {color: '#e0e0e0'},
-                xaxis: {
-                    gridcolor: '#2d3748',
-                    rangeslider: {visible: false}
-                },
-                yaxis: {
-                    title: '价格',
-                    gridcolor: '#2d3748',
-                    side: 'right'
-                },
-                yaxis2: {
-                    title: '成交量',
-                    overlaying: 'y',
-                    side: 'left',
-                    showgrid: false
-                },
-                grid: {rows: 1, columns: 1},
-                showlegend: false,
-                margin: {t: 30, b: 30, l: 50, r: 50}
-            };
+            const volumeData = data.map(d => ({
+                time: d.time / 1000,
+                value: d.volume,
+                color: d.close >= d.open ? 'rgba(72, 187, 120, 0.5)' : 'rgba(245, 101, 101, 0.5)',
+            }));
 
-            Plotly.newPlot('candlestickChart', [trace, volumeTrace], layout, {responsive: true});
+            candlestickSeries.setData(candleData);
+            volumeSeries.setData(volumeData);
+            
+            // 自适应缩放
+            chart.timeScale().fitContent();
+            
+            // 自动调整价格范围
+            const prices = data.map(d => [d.high, d.low]).flat();
+            const minPrice = Math.min(...prices);
+            const maxPrice = Math.max(...prices);
+            const priceRange = maxPrice - minPrice;
+            
+            chart.priceScale('right').applyOptions({
+                autoScale: true,
+            });
+            
+            addLog('图表', `已加载 ${data.length} 条K线数据`, 'info');
         }
 
         // 控制函数
@@ -640,6 +748,8 @@
                 const data = await response.json();
                 if (data.success) {
                     addLog('交易', '自动交易已启动', 'info');
+                    // 立即刷新数据
+                    setTimeout(refreshData, 500);
                 } else {
                     addLog('错误', data.error || '启动失败', 'error');
                 }
@@ -654,6 +764,8 @@
                 const data = await response.json();
                 if (data.success) {
                     addLog('交易', '自动交易已停止', 'warning');
+                    // 立即刷新数据
+                    setTimeout(refreshData, 500);
                 }
             } catch (e) {
                 addLog('错误', '停止请求失败', 'error');
@@ -669,6 +781,8 @@
                 const data = await response.json();
                 if (data.success) {
                     addLog('紧急', '紧急停止已执行，所有持仓已平仓', 'error');
+                    // 立即刷新数据
+                    setTimeout(refreshData, 500);
                 }
             } catch (e) {
                 addLog('错误', '紧急停止请求失败', 'error');
@@ -688,6 +802,8 @@
                 const data = await response.json();
                 if (data.success) {
                     addLog('交易', `${symbol} 平仓成功`, 'info');
+                    // 立即刷新数据
+                    setTimeout(refreshData, 500);
                 } else {
                     addLog('错误', data.error || '平仓失败', 'error');
                 }
@@ -727,11 +843,50 @@
             }
         }
 
+        // 心跳机制
+        let heartbeatInterval = null;
+        let lastHeartbeatResponse = Date.now();
+        
+        function startHeartbeat() {
+            // 每60秒发送一次心跳
+            heartbeatInterval = setInterval(() => {
+                const now = Date.now();
+                socket.emit('heartbeat', { timestamp: now, page: 'dashboard' });
+                addLog('心跳', `系统心跳 - ${new Date().toLocaleTimeString()}`, 'info');
+                
+                // 检查心跳超时（120秒）
+                if (now - lastHeartbeatResponse > 120000) {
+                    addLog('警告', '心跳超时，连接可能异常', 'error');
+                    document.getElementById('connectionStatus').className = 'status-indicator status-warning';
+                    document.getElementById('connectionText').textContent = '连接异常';
+                }
+            }, 60000);
+        }
+        
+        socket.on('heartbeat_ack', function(data) {
+            lastHeartbeatResponse = Date.now();
+            console.log('[Heartbeat] ACK received:', data);
+        });
+        
+        // 页面可见性检测
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                console.log('[Dashboard] Page visible, refreshing data...');
+                refreshData();
+                updateChart();
+                addLog('系统', '页面重新可见，已刷新数据', 'info');
+            }
+        });
+
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             refreshData();
+            initChart();
             updateChart();
+            startHeartbeat();
             
+            // 定期刷新数据（每10秒）
+            setInterval(refreshData, 10000);
             // 定期刷新图表
             setInterval(updateChart, 30000);
         });

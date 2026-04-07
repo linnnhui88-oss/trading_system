@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>交易记录 - 量化交易系统</title>
+    <title>交易记录 - 自动化交易生存指南-量化交易系统</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         * {
             margin: 0;
@@ -195,11 +197,48 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+
+        /* 盈利曲线样式 */
+        .equity-chart-container {
+            height: 350px;
+            margin-top: 15px;
+            position: relative;
+        }
+
+        .equity-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #0d1117;
+            border-radius: 8px;
+        }
+
+        .equity-stat-item {
+            text-align: center;
+        }
+
+        .equity-stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .equity-stat-label {
+            color: #a0aec0;
+            font-size: 12px;
+        }
+
+        .equity-stat-sub {
+            font-size: 11px;
+            margin-top: 2px;
+        }
     </style>
 </head>
 <body>
     <header class="header">
-        <h1>📈 量化交易系统</h1>
+        <h1>📈 自动化交易生存指南-量化交易系统</h1>
         <nav class="nav">
             <a href="/">仪表盘</a>
             <a href="/trades" class="active">交易记录</a>
@@ -230,6 +269,39 @@
                     <div class="stat-label">平均盈亏</div>
                 </div>
             </div>
+        </div>
+
+        <!-- 盈利曲线 -->
+        <div class="card">
+            <h3>📈 盈利曲线</h3>
+            <div class="equity-stats">
+                <div class="equity-stat-item">
+                    <div class="equity-stat-value" id="equityTotalReturn">--</div>
+                    <div class="equity-stat-label">总收益率</div>
+                    <div class="equity-stat-sub" id="equityTotalReturnUsd">--</div>
+                </div>
+                <div class="equity-stat-item">
+                    <div class="equity-stat-value" id="equityMaxDrawdown">--</div>
+                    <div class="equity-stat-label">最大回撤</div>
+                    <div class="equity-stat-sub" id="equityMaxDrawdownUsd">--</div>
+                </div>
+                <div class="equity-stat-item">
+                    <div class="equity-stat-value" id="equityTotalTrades">--</div>
+                    <div class="equity-stat-label">总交易</div>
+                    <div class="equity-stat-sub" id="equityWinTrades">--</div>
+                </div>
+                <div class="equity-stat-item">
+                    <div class="equity-stat-value" id="equityProfitFactor">--</div>
+                    <div class="equity-stat-label">盈利因子</div>
+                    <div class="equity-stat-sub">Profit Factor</div>
+                </div>
+                <div class="equity-stat-item">
+                    <div class="equity-stat-value" id="equitySharpe">--</div>
+                    <div class="equity-stat-label">夏普比率</div>
+                    <div class="equity-stat-sub">Sharpe Ratio</div>
+                </div>
+            </div>
+            <div id="equityChart" class="equity-chart-container"></div>
         </div>
 
         <!-- 筛选器 -->
@@ -294,9 +366,28 @@
     </div>
 
     <script>
+        const socket = io();
+        
+        socket.on('connect', function() {
+            console.log('[Trades] Socket connected');
+        });
+        
+        socket.on('disconnect', function() {
+            console.log('[Trades] Socket disconnected');
+        });
+        
+        // 监听交易更新
+        socket.on('trade_update', function(data) {
+            console.log('[Trades] Received trade update:', data);
+            // 重新加载交易数据
+            loadTrades();
+        });
+        
         let currentPage = 1;
         let tradesData = [];
         const itemsPerPage = 20;
+        let equityChart = null;
+        let equitySeries = null;
 
         async function loadTrades() {
             try {
@@ -306,6 +397,7 @@
                 if (data.success) {
                     tradesData = data.data;
                     updateStats();
+                    renderEquityCurve();
                     renderTable();
                 } else {
                     document.getElementById('tradesTable').innerHTML = `
@@ -318,6 +410,7 @@
                 // 使用模拟数据
                 tradesData = generateMockTrades();
                 updateStats();
+                renderEquityCurve();
                 renderTable();
             }
         }
@@ -328,9 +421,19 @@
             const sides = ['LONG', 'SHORT'];
             const strategies = ['MA99_MTF', 'MACD', 'RSI', 'BollingerBands'];
             
-            for (let i = 0; i < 50; i++) {
+            // 生成更有规律的盈亏数据，用于展示盈利曲线
+            let cumulativePnl = 0;
+            
+            for (let i = 0; i < 65; i++) {
                 const date = new Date();
-                date.setHours(date.getHours() - i);
+                date.setDate(date.getDate() - Math.floor(i / 3));
+                date.setHours(date.getHours() - (i % 3) * 4);
+                
+                // 模拟一些有趋势的盈亏
+                const basePnl = (Math.random() - 0.4) * 100;
+                const trendFactor = Math.sin(i / 10) * 50;
+                const pnl = basePnl + trendFactor;
+                cumulativePnl += pnl;
                 
                 trades.push({
                     timestamp: date.toISOString(),
@@ -339,10 +442,24 @@
                     strategy: strategies[Math.floor(Math.random() * strategies.length)],
                     amount: (Math.random() * 0.5 + 0.01).toFixed(4),
                     price: (Math.random() * 50000 + 20000).toFixed(2),
-                    pnl: (Math.random() - 0.4) * 200,
+                    pnl: pnl,
+                    cumulative_pnl: cumulativePnl,
                     status: 'filled'
                 });
             }
+            
+            // 按时间正序排列（用于计算累计盈亏）
+            trades.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            
+            // 重新计算累计盈亏
+            let runningTotal = 0;
+            trades.forEach(trade => {
+                runningTotal += trade.pnl;
+                trade.cumulative_pnl = runningTotal;
+            });
+            
+            // 再按时间倒序排列（用于显示）
+            trades.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
             return trades;
         }
@@ -361,6 +478,143 @@
             document.getElementById('totalProfit').className = 'stat-value ' + (totalProfit >= 0 ? 'positive' : 'negative');
             document.getElementById('avgProfit').textContent = (avgProfit >= 0 ? '+' : '') + avgProfit;
             document.getElementById('avgProfit').className = 'stat-value ' + (avgProfit >= 0 ? 'positive' : 'negative');
+        }
+
+        function renderEquityCurve() {
+            if (!tradesData || tradesData.length === 0) return;
+
+            // 按时间正序排列用于绘制曲线
+            const sortedTrades = [...tradesData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            
+            // 计算累计盈亏数据
+            let cumulativePnl = 0;
+            const equityData = sortedTrades.map(trade => {
+                cumulativePnl += (trade.pnl || 0);
+                return {
+                    time: new Date(trade.timestamp).getTime() / 1000,
+                    value: cumulativePnl
+                };
+            });
+
+            // 计算统计数据
+            const initialCapital = 1000; // 假设初始资金
+            const finalEquity = initialCapital + cumulativePnl;
+            const totalReturn = ((finalEquity - initialCapital) / initialCapital * 100).toFixed(2);
+            
+            // 计算最大回撤
+            let maxDrawdown = 0;
+            let maxDrawdownUsd = 0;
+            let peak = initialCapital;
+            let peakEquity = initialCapital;
+            
+            let runningEquity = initialCapital;
+            sortedTrades.forEach(trade => {
+                runningEquity += (trade.pnl || 0);
+                if (runningEquity > peakEquity) {
+                    peakEquity = runningEquity;
+                }
+                const drawdown = (peakEquity - runningEquity) / peakEquity * 100;
+                const drawdownUsd = peakEquity - runningEquity;
+                if (drawdown > maxDrawdown) {
+                    maxDrawdown = drawdown;
+                    maxDrawdownUsd = drawdownUsd;
+                }
+            });
+
+            // 计算盈利因子
+            const grossProfit = sortedTrades.filter(t => (t.pnl || 0) > 0).reduce((sum, t) => sum + (t.pnl || 0), 0);
+            const grossLoss = Math.abs(sortedTrades.filter(t => (t.pnl || 0) < 0).reduce((sum, t) => sum + (t.pnl || 0), 0));
+            const profitFactor = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : grossProfit > 0 ? '∞' : '0.00';
+
+            // 计算夏普比率（简化版）
+            const returns = sortedTrades.map(t => (t.pnl || 0));
+            const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+            const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
+            const stdDev = Math.sqrt(variance);
+            const sharpeRatio = stdDev > 0 ? ((avgReturn / stdDev) * Math.sqrt(365)).toFixed(3) : '0.000';
+
+            // 更新统计显示
+            const totalTrades = sortedTrades.length;
+            const winTrades = sortedTrades.filter(t => (t.pnl || 0) > 0).length;
+            
+            document.getElementById('equityTotalReturn').textContent = (totalReturn >= 0 ? '+' : '') + totalReturn + '%';
+            document.getElementById('equityTotalReturn').className = 'equity-stat-value ' + (totalReturn >= 0 ? 'positive' : 'negative');
+            document.getElementById('equityTotalReturnUsd').textContent = (cumulativePnl >= 0 ? '+' : '') + cumulativePnl.toFixed(2) + ' USD';
+            document.getElementById('equityTotalReturnUsd').className = 'equity-stat-sub ' + (cumulativePnl >= 0 ? 'positive' : 'negative');
+            
+            document.getElementById('equityMaxDrawdown').textContent = '-' + maxDrawdown.toFixed(2) + '%';
+            document.getElementById('equityMaxDrawdown').className = 'equity-stat-value negative';
+            document.getElementById('equityMaxDrawdownUsd').textContent = '-' + maxDrawdownUsd.toFixed(2) + ' USD';
+            document.getElementById('equityMaxDrawdownUsd').className = 'equity-stat-sub negative';
+            
+            document.getElementById('equityTotalTrades').textContent = totalTrades;
+            document.getElementById('equityWinTrades').textContent = winTrades + ' 盈利 / ' + (totalTrades - winTrades) + ' 亏损';
+            
+            document.getElementById('equityProfitFactor').textContent = profitFactor;
+            document.getElementById('equityProfitFactor').className = 'equity-stat-value ' + (parseFloat(profitFactor) >= 1.5 ? 'positive' : parseFloat(profitFactor) >= 1 ? 'neutral' : 'negative');
+            
+            document.getElementById('equitySharpe').textContent = sharpeRatio;
+            document.getElementById('equitySharpe').className = 'equity-stat-value ' + (parseFloat(sharpeRatio) >= 1 ? 'positive' : parseFloat(sharpeRatio) >= 0 ? 'neutral' : 'negative');
+
+            // 初始化或更新图表
+            if (!equityChart) {
+                initEquityChart();
+            }
+
+            if (equitySeries) {
+                equitySeries.setData(equityData);
+                equityChart.timeScale().fitContent();
+            }
+        }
+
+        function initEquityChart() {
+            const chartContainer = document.getElementById('equityChart');
+            
+            equityChart = LightweightCharts.createChart(chartContainer, {
+                layout: {
+                    background: { color: '#0d1117' },
+                    textColor: '#e0e0e0',
+                },
+                grid: {
+                    vertLines: { color: '#2d3748' },
+                    horzLines: { color: '#2d3748' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                rightPriceScale: {
+                    borderColor: '#2d3748',
+                    autoScale: true,
+                },
+                timeScale: {
+                    borderColor: '#2d3748',
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
+                handleScroll: {
+                    vertTouchDrag: false,
+                },
+            });
+
+            // 创建面积图系列（类似TradingView的Equity曲线）
+            equitySeries = equityChart.addAreaSeries({
+                topColor: 'rgba(79, 209, 197, 0.4)',
+                bottomColor: 'rgba(79, 209, 197, 0.05)',
+                lineColor: '#4fd1c5',
+                lineWidth: 2,
+                crosshairMarkerVisible: true,
+                crosshairMarkerRadius: 4,
+                crosshairMarkerBorderColor: '#4fd1c5',
+                crosshairMarkerBackgroundColor: '#1a1f2e',
+            });
+
+            // 响应式调整
+            window.addEventListener('resize', () => {
+                equityChart.applyOptions({
+                    width: chartContainer.clientWidth,
+                    height: chartContainer.clientHeight,
+                });
+            });
         }
 
         function renderTable() {
@@ -432,9 +686,42 @@
             renderTable();
         }
 
+        // 心跳机制
+        let heartbeatInterval = null;
+        let lastHeartbeatResponse = Date.now();
+        
+        function startHeartbeat() {
+            heartbeatInterval = setInterval(() => {
+                const now = Date.now();
+                socket.emit('heartbeat', { timestamp: now, page: 'trades' });
+                console.log('[Heartbeat] Sent at', new Date().toLocaleTimeString());
+                
+                if (now - lastHeartbeatResponse > 120000) {
+                    console.warn('[Heartbeat] Timeout detected');
+                }
+            }, 60000);
+        }
+        
+        socket.on('heartbeat_ack', function(data) {
+            lastHeartbeatResponse = Date.now();
+            console.log('[Heartbeat] ACK received:', data);
+        });
+        
+        // 页面可见性检测
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                console.log('[Trades] Page visible, refreshing data...');
+                loadTrades();
+            }
+        });
+        
+        // 定期刷新数据（每10秒）
+        setInterval(loadTrades, 10000);
+
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             loadTrades();
+            startHeartbeat();
         });
     </script>
 </body>

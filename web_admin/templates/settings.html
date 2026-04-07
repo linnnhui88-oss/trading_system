@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>系统设置 - 量化交易系统</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>系统设置 - 自动化交易生存指南-量化交易系统</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -234,7 +238,7 @@
 </head>
 <body>
     <header class="header">
-        <h1>📈 量化交易系统</h1>
+        <h1>📈 自动化交易生存指南-量化交易系统</h1>
         <nav class="nav">
             <a href="/">仪表盘</a>
             <a href="/trades">交易记录</a>
@@ -360,28 +364,6 @@
             </div>
         </div>
 
-        <!-- 策略配置 -->
-        <div class="card">
-            <h3>🧠 策略配置</h3>
-            <div class="form-group">
-                <label>默认策略</label>
-                <select id="defaultStrategy">
-                    <option value="MA99_MTF">MA99多周期共振</option>
-                    <option value="MACD">MACD策略</option>
-                    <option value="RSI">RSI策略</option>
-                    <option value="BollingerBands">布林带策略</option>
-                    <option value="CONSENSUS">共识策略(多策略投票)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <div class="toggle-switch">
-                    <input type="checkbox" id="useConsensus">
-                    <label for="useConsensus">使用多策略共识信号</label>
-                </div>
-                <p class="info-text">启用后，需要多个策略同时发出相同信号才会执行交易</p>
-            </div>
-        </div>
-
         <!-- 系统设置 -->
         <div class="card">
             <h3>🔧 系统设置</h3>
@@ -418,6 +400,28 @@
     </div>
 
     <script>
+        const socket = io();
+        
+        socket.on('connect', function() {
+            console.log('[Settings] Socket connected');
+        });
+        
+        socket.on('disconnect', function() {
+            console.log('[Settings] Socket disconnected');
+        });
+        
+        // 安全设置元素值
+        function setElementValue(id, value, isCheckbox = false) {
+            const el = document.getElementById(id);
+            if (el) {
+                if (isCheckbox) {
+                    el.checked = value;
+                } else {
+                    el.value = value;
+                }
+            }
+        }
+
         // 加载设置
         async function loadSettings() {
             try {
@@ -427,26 +431,25 @@
                 if (data.success) {
                     const settings = data.data;
                     
-                    // 填充表单
-                    document.getElementById('maxPosition').value = settings.max_position_usdt || 1000;
-                    document.getElementById('maxDailyLoss').value = settings.max_daily_loss_usdt || 500;
-                    document.getElementById('leverage').value = settings.default_leverage || 3;
-                    document.getElementById('maxPositions').value = settings.max_positions_count || 5;
-                    document.getElementById('stopLossPercent').value = settings.stop_loss_percent || 2;
-                    document.getElementById('takeProfitPercent').value = settings.take_profit_percent || 4;
-                    document.getElementById('trailingStopPercent').value = settings.trailing_stop_percent || 1;
-                    document.getElementById('trailingStopEnabled').checked = settings.trailing_stop_enabled !== false;
-                    document.getElementById('defaultStrategy').value = settings.default_strategy || 'MA99_MTF';
-                    document.getElementById('useConsensus').checked = settings.use_consensus || false;
-                    document.getElementById('webPort').value = settings.web_port || 5000;
-                    document.getElementById('logLevel').value = settings.log_level || 'INFO';
-                    document.getElementById('emailEnabled').checked = settings.email_enabled || false;
-                    document.getElementById('emailHost').value = settings.email_host || '';
-                    document.getElementById('emailPort').value = settings.email_port || 587;
-                    document.getElementById('emailUser').value = settings.email_user || '';
-                    document.getElementById('emailTo').value = settings.email_to || '';
+                    // 填充表单（安全方式）
+                    setElementValue('maxPosition', settings.max_position_usdt || 1000);
+                    setElementValue('maxDailyLoss', settings.max_daily_loss_usdt || 500);
+                    setElementValue('leverage', settings.default_leverage || 3);
+                    setElementValue('maxPositions', settings.max_positions_count || 5);
+                    setElementValue('stopLossPercent', settings.stop_loss_percent || 2);
+                    setElementValue('takeProfitPercent', settings.take_profit_percent || 4);
+                    setElementValue('trailingStopPercent', settings.trailing_stop_percent || 1);
+                    setElementValue('trailingStopEnabled', settings.trailing_stop_enabled !== false, true);
+                    setElementValue('webPort', settings.web_port || 5000);
+                    setElementValue('logLevel', settings.log_level || 'INFO');
+                    setElementValue('emailEnabled', settings.email_enabled || false, true);
+                    setElementValue('emailHost', settings.email_host || '');
+                    setElementValue('emailPort', settings.email_port || 587);
+                    setElementValue('emailUser', settings.email_user || '');
+                    setElementValue('emailTo', settings.email_to || '');
                 }
             } catch (e) {
+                console.error('加载设置失败:', e);
                 showAlert('加载设置失败: ' + e.message, 'error');
             }
         }
@@ -462,8 +465,6 @@
                 take_profit_percent: parseFloat(document.getElementById('takeProfitPercent').value),
                 trailing_stop_percent: parseFloat(document.getElementById('trailingStopPercent').value),
                 trailing_stop_enabled: document.getElementById('trailingStopEnabled').checked,
-                default_strategy: document.getElementById('defaultStrategy').value,
-                use_consensus: document.getElementById('useConsensus').checked,
                 web_port: parseInt(document.getElementById('webPort').value),
                 log_level: document.getElementById('logLevel').value,
                 email_enabled: document.getElementById('emailEnabled').checked,
@@ -489,6 +490,11 @@
                 
                 if (data.success) {
                     showAlert('设置保存成功！', 'success');
+                    // 保存成功后立即刷新显示
+                    setTimeout(() => {
+                        loadSettings();
+                        console.log('[Settings] Settings reloaded after save');
+                    }, 500);
                 } else {
                     showAlert('保存失败: ' + (data.error || '未知错误'), 'error');
                 }
@@ -542,9 +548,39 @@
                 .catch(e => showAlert('重置失败: ' + e.message, 'error'));
         }
 
+        // 心跳机制
+        let heartbeatInterval = null;
+        let lastHeartbeatResponse = Date.now();
+        
+        function startHeartbeat() {
+            heartbeatInterval = setInterval(() => {
+                const now = Date.now();
+                socket.emit('heartbeat', { timestamp: now, page: 'settings' });
+                console.log('[Heartbeat] Sent at', new Date().toLocaleTimeString());
+                
+                if (now - lastHeartbeatResponse > 120000) {
+                    console.warn('[Heartbeat] Timeout detected');
+                }
+            }, 60000);
+        }
+        
+        socket.on('heartbeat_ack', function(data) {
+            lastHeartbeatResponse = Date.now();
+            console.log('[Heartbeat] ACK received:', data);
+        });
+        
+        // 页面可见性检测
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                console.log('[Settings] Page visible, refreshing data...');
+                loadSettings();
+            }
+        });
+
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             loadSettings();
+            startHeartbeat();
         });
     </script>
 </body>
