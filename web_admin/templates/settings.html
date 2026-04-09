@@ -20,12 +20,18 @@
             background: #0f1419;
             color: #e0e0e0;
             min-height: 100vh;
+            padding-top: 130px;
         }
         
         .header {
             background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
             padding: 20px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
         }
         
         .header h1 {
@@ -34,6 +40,22 @@
             display: flex;
             align-items: center;
             gap: 10px;
+        }
+        
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .connection-status {
+            padding: 8px 16px;
+            background: rgba(45, 55, 72, 0.8);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
         }
         
         .nav {
@@ -238,7 +260,13 @@
 </head>
 <body>
     <header class="header">
-        <h1>📈 自动化交易生存指南-量化交易系统</h1>
+        <div class="header-top">
+            <h1>📈 自动化交易生存指南-量化交易系统<V1 class="0">v1.0</V1></h1>
+            <div class="connection-status">
+                <span class="status-indicator status-offline" id="connectionStatus"></span>
+                <span id="connectionText">连接中...</span>
+            </div>
+        </div>
         <nav class="nav">
             <a href="/">仪表盘</a>
             <a href="/trades">交易记录</a>
@@ -404,10 +432,14 @@
         
         socket.on('connect', function() {
             console.log('[Settings] Socket connected');
+            document.getElementById('connectionStatus').className = 'status-indicator status-online';
+            document.getElementById('connectionText').textContent = '已连接';
         });
         
         socket.on('disconnect', function() {
             console.log('[Settings] Socket disconnected');
+            document.getElementById('connectionStatus').className = 'status-indicator status-offline';
+            document.getElementById('connectionText').textContent = '已断开';
         });
         
         // 安全设置元素值
