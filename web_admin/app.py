@@ -2,6 +2,10 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# 先加载环境变量，确保GEMINI_API_KEY等配置可用
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 import logging
