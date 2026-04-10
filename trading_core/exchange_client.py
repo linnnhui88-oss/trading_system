@@ -77,65 +77,84 @@ class ExchangeClient:
     def get_positions(self) -> List[Dict]:
         """获取当前持仓"""
         try:
-            # 获取所有交易对的持仓
-            positions = self.exchange.fetch_positions()
-            logger.info(f"[Exchange] fetch_positions returned: {len(positions)} positions")
-            
-            # 同时尝试使用 fetch_balance 获取持仓信息
+            # 优先使用 fetch_balance 获取持仓信息（更可靠）
             balance = self.exchange.fetch_balance()
             positions_info = balance.get('info', {}).get('positions', [])
             logger.info(f"[Exchange] Balance positions: {len(positions_info)}")
             
             active_positions = []
             
-            # 处理 fetch_positions 返回的数据
-            for pos in positions:
-                contracts = float(pos.get('contracts', 0))
-                notional = float(pos.get('notional', 0))
-                
-                logger.info(f"[Exchange] Position from fetch_positions: {pos.get('symbol')}, contracts={contracts}, notional={notional}")
-                logger.info(f"[Exchange] Position details: {pos}")
-                
-                # 使用 notional 或 contracts 来判断是否有持仓
-                if contracts != 0 or abs(notional) > 0.01:
-                    # 安全获取杠杆值
-                    leverage_val = pos.get('leverage', 1)
-                    if leverage_val is None:
-                        leverage_val = 1
-                    
-                    active_positions.append({
-                        'symbol': pos['symbol'],
-                        'side': 'LONG' if (contracts > 0 or notional > 0) else 'SHORT',
-                        'contracts': abs(contracts) if contracts != 0 else abs(notional),
-                        'entry_price': float(pos.get('entryPrice') or pos.get('entry_price') or 0),
-                        'mark_price': float(pos.get('markPrice') or pos.get('mark_price') or 0),
-                        'unrealized_pnl': float(pos.get('unrealizedPnl') or pos.get('unrealized_pnl') or 0),
-                        'leverage': int(leverage_val),
-                        'liquidation_price': float(pos.get('liquidationPrice') or 0)
-                    })
-            
-            # 如果 fetch_positions 没有返回数据，尝试从 balance 获取
-            if not active_positions and positions_info:
+            # 处理 balance 返回的持仓数据
+            if positions_info:
                 for pos in positions_info:
                     position_amt = float(pos.get('positionAmt', 0))
                     if position_amt != 0:
-                        leverage_val = pos.get('leverage', 1)
-                        if leverage_val is None:
+                        # 修复杠杆倍数获取逻辑
+                        leverage_val = pos.get('leverage')
+                        if leverage_val is None or leverage_val == '':
                             leverage_val = 1
+                        else:
+                            try:
+                                leverage_val = int(float(leverage_val))
+                            except (ValueError, TypeError):
+                                leverage_val = 1
+                        
+                        # 确保所有数值字段都有默认值
+                        entry_price = float(pos.get('entryPrice') or 0)
+                        mark_price = float(pos.get('markPrice') or 0)
+                        unrealized_pnl = float(pos.get('unrealizedProfit') or 0)
+                        
                         active_positions.append({
-                            'symbol': pos['symbol'],
+                            'symbol': pos.get('symbol', ''),
                             'side': 'LONG' if position_amt > 0 else 'SHORT',
                             'contracts': abs(position_amt),
-                            'entry_price': float(pos.get('entryPrice') or 0),
-                            'mark_price': float(pos.get('markPrice') or 0),
-                            'unrealized_pnl': float(pos.get('unrealizedProfit') or 0),
-                            'leverage': int(leverage_val),
+                            'entry_price': entry_price,
+                            'mark_price': mark_price,
+                            'unrealized_pnl': unrealized_pnl,
+                            'leverage': leverage_val,
+                            'liquidation_price': float(pos.get('liquidationPrice') or 0)
+                        })
+            
+            # 如果 balance 没有返回数据，尝试使用 fetch_positions
+            if not active_positions:
+                positions = self.exchange.fetch_positions()
+                logger.info(f"[Exchange] fetch_positions returned: {len(positions)} positions")
+                
+                for pos in positions:
+                    contracts = float(pos.get('contracts', 0))
+                    notional = float(pos.get('notional', 0))
+                    
+                    # 使用 contracts 或 notional 来判断是否有持仓
+                    if contracts != 0 or abs(notional) > 0.01:
+                        # 修复杠杆倍数获取逻辑
+                        leverage_val = pos.get('leverage')
+                        if leverage_val is None or leverage_val == '':
+                            leverage_val = 1
+                        else:
+                            try:
+                                leverage_val = int(float(leverage_val))
+                            except (ValueError, TypeError):
+                                leverage_val = 1
+                        
+                        # 确保所有数值字段都有默认值
+                        entry_price = float(pos.get('entryPrice') or pos.get('entry_price') or 0)
+                        mark_price = float(pos.get('markPrice') or pos.get('mark_price') or 0)
+                        unrealized_pnl = float(pos.get('unrealizedPnl') or pos.get('unrealized_pnl') or 0)
+                        
+                        active_positions.append({
+                            'symbol': pos.get('symbol', ''),
+                            'side': 'LONG' if (contracts > 0 or notional > 0) else 'SHORT',
+                            'contracts': abs(contracts) if contracts != 0 else abs(notional),
+                            'entry_price': entry_price,
+                            'mark_price': mark_price,
+                            'unrealized_pnl': unrealized_pnl,
+                            'leverage': leverage_val,
                             'liquidation_price': float(pos.get('liquidationPrice') or 0)
                         })
             
             logger.info(f"[Exchange] Final active positions: {len(active_positions)}")
             for p in active_positions:
-                logger.info(f"[Exchange] Active: {p['symbol']} {p['side']} x{p['leverage']}")
+                logger.info(f"[Exchange] Active: {p['symbol']} {p['side']} x{p['leverage']} PnL:{p['unrealized_pnl']:.2f}")
             
             return active_positions
         except Exception as e:

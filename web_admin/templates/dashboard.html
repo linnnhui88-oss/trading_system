@@ -534,7 +534,11 @@
             // 更新交易状态
             const tradingStatus = document.getElementById('tradingStatus');
             const tradingStatusText = document.getElementById('tradingStatusText');
-            if (data.auto_trading) {
+            // 优先使用 risk_status.trading_enabled，如果不存在则使用 auto_trading
+            const isTrading = data.risk_status && data.risk_status.trading_enabled !== undefined 
+                ? data.risk_status.trading_enabled 
+                : data.auto_trading;
+            if (isTrading) {
                 tradingStatus.className = 'status-indicator status-online';
                 tradingStatusText.textContent = '自动交易状态: 运行中';
             } else {
@@ -547,6 +551,8 @@
 
             // 更新风险状态
             if (data.risk_status) {
+                // 将 auto_trading 状态传递给 risk_status，确保一致性
+                data.risk_status.auto_trading = data.auto_trading;
                 updateRiskStatus(data.risk_status);
             }
         }
@@ -562,34 +568,47 @@
             }
             console.log('[Positions] Rendering', positions.length, 'positions');
 
-            tbody.innerHTML = positions.map(pos => `
+            tbody.innerHTML = positions.map(pos => {
+                // 安全获取字段值，提供默认值
+                const symbol = pos.symbol || '-';
+                const side = pos.side || 'LONG';
+                const contracts = parseFloat(pos.contracts) || 0;
+                const entryPrice = parseFloat(pos.entry_price) || 0;
+                const markPrice = parseFloat(pos.mark_price) || 0;
+                const unrealizedPnl = parseFloat(pos.unrealized_pnl) || 0;
+                const leverage = parseInt(pos.leverage) || 1;
+                
+                return `
                 <tr>
-                    <td>${pos.symbol}</td>
-                    <td><span class="badge badge-${pos.side.toLowerCase()}">${pos.side}</span></td>
-                    <td>${pos.contracts.toFixed(4)}</td>
-                    <td>$${pos.entry_price.toFixed(2)}</td>
-                    <td>$${pos.mark_price.toFixed(2)}</td>
-                    <td class="${pos.unrealized_pnl >= 0 ? 'positive' : 'negative'}">
-                        ${pos.unrealized_pnl >= 0 ? '+' : ''}${pos.unrealized_pnl.toFixed(2)}
+                    <td>${symbol}</td>
+                    <td><span class="badge badge-${side.toLowerCase()}">${side}</span></td>
+                    <td>${contracts.toFixed(4)}</td>
+                    <td>$${entryPrice.toFixed(2)}</td>
+                    <td>$${markPrice.toFixed(2)}</td>
+                    <td class="${unrealizedPnl >= 0 ? 'positive' : 'negative'}">
+                        ${unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
                     </td>
-                    <td>${pos.leverage}x</td>
+                    <td>${leverage}x</td>
                     <td>
                         <button class="btn btn-danger" style="padding: 6px 12px; font-size: 12px;" 
-                                onclick="closePosition('${pos.symbol}')">平仓</button>
+                                onclick="closePosition('${symbol}')">平仓</button>
                     </td>
                 </tr>
-            `).join('');
+            `}).join('');
         }
 
         // 更新风险状态
         function updateRiskStatus(status) {
-            document.getElementById('tradingEnabled').textContent = status.trading_enabled ? '✅ 启用' : '❌ 禁用';
-            document.getElementById('dailyTrades').textContent = `${status.daily_trades} 笔`;
+            // 优先使用传入的 auto_trading 状态，确保实时更新
+            const isTradingEnabled = status.auto_trading !== undefined ? status.auto_trading : 
+                                     (currentData.auto_trading !== undefined ? currentData.auto_trading : status.trading_enabled);
+            document.getElementById('tradingEnabled').textContent = isTradingEnabled ? '✅ 启用' : '❌ 禁用';
+            document.getElementById('dailyTrades').textContent = `${status.daily_trades || 0} 笔`;
             document.getElementById('dailyPnl').textContent = (status.daily_pnl || 0).toFixed(2) + ' USDT';
             document.getElementById('dailyPnl').className = 'stat-value ' + ((status.daily_pnl || 0) >= 0 ? 'positive' : 'negative');
-            document.getElementById('stopLossPercent').textContent = status.stop_loss_percent + '%';
-            document.getElementById('takeProfitPercent').textContent = status.take_profit_percent + '%';
-            document.getElementById('trailingStopPercent').textContent = status.trailing_stop_percent + '%';
+            document.getElementById('stopLossPercent').textContent = (status.stop_loss_percent || 2) + '%';
+            document.getElementById('takeProfitPercent').textContent = (status.take_profit_percent || 4) + '%';
+            document.getElementById('trailingStopPercent').textContent = (status.trailing_stop_percent || 1.0) + '%';
         }
 
         // TradingView Lightweight Charts 实例
@@ -754,31 +773,65 @@
         // 控制函数
         async function startTrading() {
             try {
+                // 禁用按钮防止重复点击
+                const btn = document.getElementById('startBtn');
+                btn.disabled = true;
+                btn.textContent = '⏳ 启动中...';
+                
                 const response = await fetch('/api/trading/start', {method: 'POST'});
                 const data = await response.json();
                 if (data.success) {
                     addLog('交易', '自动交易已启动', 'info');
-                    // 立即刷新数据
-                    setTimeout(refreshData, 500);
+                    // 更新本地状态并刷新UI
+                    currentData.auto_trading = true;
+                    if (currentData.risk_status) {
+                        currentData.risk_status.trading_enabled = true;
+                        currentData.risk_status.auto_trading = true;
+                    }
+                    updateDashboard(currentData);
+                    // 延迟刷新确保后端状态同步
+                    setTimeout(refreshData, 1000);
                 } else {
                     addLog('错误', data.error || '启动失败', 'error');
                 }
             } catch (e) {
-                addLog('错误', '启动请求失败', 'error');
+                addLog('错误', '启动请求失败: ' + e.message, 'error');
+            } finally {
+                // 恢复按钮
+                const btn = document.getElementById('startBtn');
+                btn.disabled = false;
+                btn.textContent = '▶️ 启动自动交易';
             }
         }
 
         async function stopTrading() {
             try {
+                // 禁用按钮防止重复点击
+                const btn = document.getElementById('stopBtn');
+                btn.disabled = true;
+                btn.textContent = '⏳ 停止中...';
+                
                 const response = await fetch('/api/trading/stop', {method: 'POST'});
                 const data = await response.json();
                 if (data.success) {
                     addLog('交易', '自动交易已停止', 'warning');
-                    // 立即刷新数据
-                    setTimeout(refreshData, 500);
+                    // 更新本地状态并刷新UI
+                    currentData.auto_trading = false;
+                    if (currentData.risk_status) {
+                        currentData.risk_status.trading_enabled = false;
+                        currentData.risk_status.auto_trading = false;
+                    }
+                    updateDashboard(currentData);
+                    // 延迟刷新确保后端状态同步
+                    setTimeout(refreshData, 1000);
                 }
             } catch (e) {
-                addLog('错误', '停止请求失败', 'error');
+                addLog('错误', '停止请求失败: ' + e.message, 'error');
+            } finally {
+                // 恢复按钮
+                const btn = document.getElementById('stopBtn');
+                btn.disabled = false;
+                btn.textContent = '⏸️ 停止自动交易';
             }
         }
 
@@ -791,11 +844,20 @@
                 const data = await response.json();
                 if (data.success) {
                     addLog('紧急', '紧急停止已执行，所有持仓已平仓', 'error');
-                    // 立即刷新数据
-                    setTimeout(refreshData, 500);
+                    // 更新本地状态
+                    currentData.auto_trading = false;
+                    if (currentData.risk_status) {
+                        currentData.risk_status.trading_enabled = false;
+                        currentData.risk_status.auto_trading = false;
+                    }
+                    // 清空持仓显示
+                    currentData.positions = [];
+                    updateDashboard(currentData);
+                    // 延迟刷新确保后端状态同步
+                    setTimeout(refreshData, 1500);
                 }
             } catch (e) {
-                addLog('错误', '紧急停止请求失败', 'error');
+                addLog('错误', '紧急停止请求失败: ' + e.message, 'error');
             }
         }
 
@@ -812,13 +874,18 @@
                 const data = await response.json();
                 if (data.success) {
                     addLog('交易', `${symbol} 平仓成功`, 'info');
-                    // 立即刷新数据
-                    setTimeout(refreshData, 500);
+                    // 从本地状态中移除该持仓
+                    if (currentData.positions) {
+                        currentData.positions = currentData.positions.filter(p => p.symbol !== symbol);
+                        updateDashboard(currentData);
+                    }
+                    // 延迟刷新确保后端状态同步
+                    setTimeout(refreshData, 1000);
                 } else {
                     addLog('错误', data.error || '平仓失败', 'error');
                 }
             } catch (e) {
-                addLog('错误', '平仓请求失败', 'error');
+                addLog('错误', '平仓请求失败: ' + e.message, 'error');
             }
         }
 

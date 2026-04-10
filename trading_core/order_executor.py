@@ -182,7 +182,8 @@ class OrderExecutor:
             return False
     
     def _record_trade(self, symbol: str, action: str, amount: float, 
-                     price: float, order_id: str, timeframe: str, rsi: float):
+                     price: float, order_id: str, timeframe: str, rsi: float,
+                     pnl: float = None, notes: str = None):
         """记录交易到数据库"""
         try:
             conn = sqlite3.connect(self.db_path)
@@ -190,8 +191,8 @@ class OrderExecutor:
             
             cursor.execute('''
                 INSERT INTO trades (timestamp, symbol, side, action, amount, price, 
-                                  order_id, status, strategy, timeframe, rsi)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  order_id, status, strategy, timeframe, rsi, pnl, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 datetime.now().isoformat(),
                 symbol,
@@ -203,7 +204,9 @@ class OrderExecutor:
                 'filled',
                 'MA99_MTF',
                 timeframe,
-                rsi
+                rsi,
+                pnl,
+                notes
             ))
             
             conn.commit()
@@ -374,9 +377,10 @@ class OrderExecutor:
                         # 记录盈亏
                         self.risk_manager.record_trade(pnl)
                         
-                        # 记录到数据库
+                        # 记录到数据库（包含盈亏）
                         self._record_trade(symbol, side, amount, close_price, 
                                          f"tp_sl_{reason}", 'MA99_MTF', 0, 
+                                         pnl=pnl,
                                          notes=f"{reason} 盈亏:{pnl:.2f}USDT ({pnl_percent:+.2f}%)")
                         
                         # 记录策略平仓日志

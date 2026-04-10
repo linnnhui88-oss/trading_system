@@ -539,8 +539,12 @@ def broadcast_status():
             positions = exchange.get_positions()
             risk_status = risk_manager.get_status()
             strategy_status = strategy_manager.get_status() if strategy_manager else {}
+            executor_status = order_executor.get_status() if order_executor else {'auto_trading': False}
             
             total_unrealized = sum(p.get('unrealized_pnl', 0) for p in positions)
+            
+            # 更新 risk_status 中的持仓数量
+            risk_status['current_positions_count'] = len(positions)
             
             socketio.emit('status_update', {
                 'balance': balance,
@@ -548,7 +552,7 @@ def broadcast_status():
                 'position_count': len(positions),
                 'total_unrealized_pnl': round(total_unrealized, 2),
                 'risk_status': risk_status,
-                'auto_trading': order_executor.auto_trading,
+                'auto_trading': executor_status.get('auto_trading', False),
                 'strategies': strategy_status,
                 'timestamp': time.time()
             })

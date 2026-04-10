@@ -147,10 +147,14 @@ class RiskManager:
     def get_status(self) -> Dict:
         """获取风险状态"""
         self._reset_daily_if_needed()
+        
+        # 从数据库获取今日交易统计
+        daily_stats = self._get_daily_stats_from_db()
+        
         return {
             'trading_enabled': self.trading_enabled,
-            'daily_pnl': self.daily_pnl,
-            'daily_trades': self.daily_trades,
+            'daily_pnl': daily_stats['daily_pnl'],
+            'daily_trades': daily_stats['daily_trades'],
             'max_daily_loss': self.max_daily_loss_usdt,
             'max_position': self.max_position_usdt,
             'stop_loss_percent': self.stop_loss_percent,
@@ -162,6 +166,48 @@ class RiskManager:
             'errors_today': self.errors_today,
             'max_errors_per_day': self.max_errors_per_day
         }
+    
+    def _get_daily_stats_from_db(self) -> Dict:
+        """从数据库获取今日交易统计"""
+        try:
+            import sqlite3
+            from pathlib import Path
+            
+            db_path = Path(__file__).parent.parent / 'data' / 'trade_history.db'
+            if not db_path.exists():
+                return {'daily_pnl': self.daily_pnl, 'daily_trades': self.daily_trades}
+            
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # 获取今日开始时间
+            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            
+            # 查询今日已平仓交易的盈亏（从数据库的 trades 表）
+            cursor.execute('''
+                SELECT COALESCE(SUM(pnl), 0) as total_pnl, COUNT(*) as trade_count
+                FROM trades 
+                WHERE timestamp >= ? AND pnl IS NOT NULL
+            ''', (today_start,))
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row:
+                db_pnl = row[0] if row[0] is not None else 0
+                db_trades = row[1] if row[1] is not None else 0
+                
+                # 合并内存和数据库统计（内存中的包含未持久化的数据）
+                return {
+                    'daily_pnl': round(db_pnl + self.daily_pnl, 2),
+                    'daily_trades': db_trades + self.daily_trades
+                }
+            
+            return {'daily_pnl': self.daily_pnl, 'daily_trades': self.daily_trades}
+            
+        except Exception as e:
+            logger.warning(f"从数据库获取每日统计失败: {e}")
+            return {'daily_pnl': self.daily_pnl, 'daily_trades': self.daily_trades}
     
     def enable_trading(self):
         """启用交易"""
