@@ -243,14 +243,22 @@ def start_trading():
     """启动自动交易"""
     try:
         exchange, risk_manager, order_executor, strategy_manager = get_components()
-        order_executor.start_auto_trading()
         
-        # 同时启动策略管理器
-        if strategy_manager and not strategy_manager._running:
-            strategy_manager.start(interval=60)
+        # 1. 启动策略管理器（先启动扫描循环）
+        if strategy_manager:
+            if not strategy_manager._running:
+                strategy_manager.start(interval=60)
+                logger.info("[API] 策略引擎已启动")
             strategy_manager.start_all()
+            logger.info("[API] 所有策略已启动")
+        
+        # 2. 启动订单执行器（允许执行交易）
+        order_executor.start_auto_trading()
+        logger.info("[API] 订单执行器已启动，自动交易已开启")
+        
         return jsonify({'success': True, 'message': '自动交易已启动'})
     except Exception as e:
+        logger.error(f"[API] 启动交易失败: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/trading/stop', methods=['POST'])
@@ -258,13 +266,19 @@ def stop_trading():
     """停止自动交易"""
     try:
         exchange, risk_manager, order_executor, strategy_manager = get_components()
-        order_executor.stop_auto_trading()
         
-        # 同时停止策略管理器
+        # 1. 停止订单执行器（阻止新交易）
+        order_executor.stop_auto_trading()
+        logger.info("[API] 订单执行器已停止")
+        
+        # 2. 停止策略管理器（停止扫描循环）
         if strategy_manager:
-            strategy_manager.stop_all()
+            strategy_manager.stop()
+            logger.info("[API] 策略引擎已停止")
+        
         return jsonify({'success': True, 'message': '自动交易已停止'})
     except Exception as e:
+        logger.error(f"[API] 停止交易失败: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/trading/emergency_stop', methods=['POST'])

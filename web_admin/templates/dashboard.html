@@ -531,13 +531,11 @@
             // 更新持仓数量
             document.getElementById('positionCount').textContent = data.position_count || 0;
 
-            // 更新交易状态
+            // 更新交易状态 - 使用 auto_trading 作为唯一标准
             const tradingStatus = document.getElementById('tradingStatus');
             const tradingStatusText = document.getElementById('tradingStatusText');
-            // 优先使用 risk_status.trading_enabled，如果不存在则使用 auto_trading
-            const isTrading = data.risk_status && data.risk_status.trading_enabled !== undefined 
-                ? data.risk_status.trading_enabled 
-                : data.auto_trading;
+            // 使用 auto_trading 判断交易状态（order_executor 控制）
+            const isTrading = data.auto_trading === true;
             if (isTrading) {
                 tradingStatus.className = 'status-indicator status-online';
                 tradingStatusText.textContent = '自动交易状态: 运行中';

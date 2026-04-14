@@ -35,7 +35,8 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')
 
-MEMORY_FILE = "signal_memory.json"
+# 使用绝对路径存储信号记忆文件
+MEMORY_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'signal_memory.json')
 
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 exchange = get_exchange_client()
@@ -164,6 +165,9 @@ def check_ma99_strategy(symbol, timeframe):
                 
         return None, current, None
     except Exception as e:
+        logger.error(f"策略计算失败 {symbol} {timeframe}: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
         return None, None, None
 
 # ================= 6. 守护进程中枢 =================

@@ -4,10 +4,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    # Exchange API Configuration
+    # Exchange API Configuration (支持多种环境变量名)
     EXCHANGE_ID = os.getenv('EXCHANGE_ID', 'binance')
-    API_KEY = os.getenv('API_KEY', '')
-    API_SECRET = os.getenv('API_SECRET', '')
+    # 优先使用 BINANCE_API_KEY，如果不存在则使用 API_KEY
+    API_KEY = os.getenv('BINANCE_API_KEY') or os.getenv('API_KEY', '')
+    API_SECRET = os.getenv('BINANCE_SECRET_KEY') or os.getenv('API_SECRET', '')
     
     # Trading Configuration
     SYMBOL = os.getenv('SYMBOL', 'BTC/USDT')

@@ -46,13 +46,19 @@ class OrderExecutor:
         self.positions = {}
         self.positions_lock = threading.Lock()
         
+        # 数据库连接锁（线程安全）
+        self._db_lock = threading.Lock()
+        
         # 启动止盈止损监控线程
         self._monitor_thread = None
         self._stop_monitor = threading.Event()
         self._start_position_monitor()
+        
+        # 定期同步持仓（每5分钟）
+        self._start_position_sync()
     
     def _init_db(self):
-        """初始化数据库"""
+        """初始化数据库（添加索引优化）"""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -90,6 +96,12 @@ class OrderExecutor:
                 order_id TEXT
             )
         ''')
+        
+        # 创建索引优化查询性能
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON trades(timestamp)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_signals_timestamp ON signals(timestamp)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol)')
         
         conn.commit()
         conn.close()
@@ -184,102 +196,152 @@ class OrderExecutor:
     def _record_trade(self, symbol: str, action: str, amount: float, 
                      price: float, order_id: str, timeframe: str, rsi: float,
                      pnl: float = None, notes: str = None):
-        """记录交易到数据库"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+        """记录交易到数据库（线程安全）"""
+        with self._db_lock:
+            conn = None
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    INSERT INTO trades (timestamp, symbol, side, action, amount, price, 
+                                      order_id, status, strategy, timeframe, rsi, pnl, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    datetime.now().isoformat(),
+                    symbol,
+                    'buy' if action == 'LONG' else 'sell',
+                    action,
+                    amount,
+                    price,
+                    order_id,
+                    'filled',
+                    'MA99_MTF',
+                    timeframe,
+                    rsi,
+                    pnl,
+                    notes
+                ))
             
-            cursor.execute('''
-                INSERT INTO trades (timestamp, symbol, side, action, amount, price, 
-                                  order_id, status, strategy, timeframe, rsi, pnl, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                datetime.now().isoformat(),
-                symbol,
-                'buy' if action == 'LONG' else 'sell',
-                action,
-                amount,
-                price,
-                order_id,
-                'filled',
-                'MA99_MTF',
-                timeframe,
-                rsi,
-                pnl,
-                notes
-            ))
-            
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error(f"记录交易失败: {e}")
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"记录交易失败: {e}")
+                if conn:
+                    conn.close()
     
     def _record_signal(self, symbol: str, timeframe: str, action: str,
                       price: float, rsi: float, executed: bool = False,
                       order_id: str = None, notes: str = None):
-        """记录信号到数据库"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT INTO signals (timestamp, symbol, timeframe, action, price, 
-                                   rsi, executed, execution_time, order_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                datetime.now().isoformat(),
-                symbol,
-                timeframe,
-                action,
-                price,
+        """记录信号到数据库（线程安全）"""
+        with self._db_lock:
+            conn = None
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    INSERT INTO signals (timestamp, symbol, timeframe, action, price, 
+                                       rsi, executed, execution_time, order_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    datetime.now().isoformat(),
+                    symbol,
+                    timeframe,
+                    action,
+                    price,
                 rsi,
                 executed,
-                datetime.now().isoformat() if executed else None,
-                order_id
-            ))
-            
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error(f"记录信号失败: {e}")
+                    datetime.now().isoformat() if executed else None,
+                    order_id
+                ))
+                
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"记录信号失败: {e}")
+                if conn:
+                    conn.close()
     
     def get_recent_trades(self, limit: int = 50) -> List[Dict]:
-        """获取最近交易记录"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?
-            ''', (limit,))
-            
-            rows = cursor.fetchall()
-            conn.close()
-            
-            return [dict(row) for row in rows]
-        except Exception as e:
-            logger.error(f"获取交易记录失败: {e}")
-            return []
+        """获取最近交易记录（线程安全）"""
+        with self._db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?
+                ''', (limit,))
+                
+                rows = cursor.fetchall()
+                conn.close()
+                
+                return [dict(row) for row in rows]
+            except Exception as e:
+                logger.error(f"获取交易记录失败: {e}")
+                return []
     
     def get_recent_signals(self, limit: int = 50) -> List[Dict]:
-        """获取最近信号记录"""
+        """获取最近信号记录（线程安全）"""
+        with self._db_lock:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    SELECT * FROM signals ORDER BY timestamp DESC LIMIT ?
+                ''', (limit,))
+                
+                rows = cursor.fetchall()
+                conn.close()
+                
+                return [dict(row) for row in rows]
+            except Exception as e:
+                logger.error(f"获取信号记录失败: {e}")
+                return []
+    
+    def _start_position_sync(self):
+        """启动持仓同步线程（定期与交易所同步）"""
+        def sync_loop():
+            while not self._stop_monitor.is_set():
+                try:
+                    self._sync_positions_with_exchange()
+                except Exception as e:
+                    logger.error(f"持仓同步失败: {e}")
+                
+                # 每5分钟同步一次
+                self._stop_monitor.wait(300)
+        
+        sync_thread = threading.Thread(target=sync_loop, daemon=True)
+        sync_thread.start()
+        logger.info("🔄 持仓同步线程已启动（每5分钟）")
+    
+    def _sync_positions_with_exchange(self):
+        """与交易所同步持仓状态"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+            exchange_positions = self.exchange.get_positions()
             
-            cursor.execute('''
-                SELECT * FROM signals ORDER BY timestamp DESC LIMIT ?
-            ''', (limit,))
-            
-            rows = cursor.fetchall()
-            conn.close()
-            
-            return [dict(row) for row in rows]
+            with self.positions_lock:
+                # 清理已不存在的持仓
+                current_symbols = {p['symbol'] for p in exchange_positions}
+                for symbol in list(self.positions.keys()):
+                    if symbol not in current_symbols:
+                        logger.info(f"持仓同步: 移除已平仓 {symbol}")
+                        del self.positions[symbol]
+                
+                # 更新现有持仓信息
+                for pos in exchange_positions:
+                    symbol = pos['symbol']
+                    if symbol in self.positions:
+                        # 更新价格和盈亏
+                        self.positions[symbol]['mark_price'] = pos.get('mark_price', 0)
+                        self.positions[symbol]['unrealized_pnl'] = pos.get('unrealized_pnl', 0)
+                        
         except Exception as e:
-            logger.error(f"获取信号记录失败: {e}")
-            return []
+            logger.error(f"同步持仓失败: {e}")
     
     def start_auto_trading(self):
         """启动自动交易"""
