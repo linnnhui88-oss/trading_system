@@ -17,6 +17,8 @@ from trading_core.exchange_client import get_exchange_client
 from trading_core.risk_manager import get_risk_manager
 from trading_core.order_executor import get_order_executor
 from trading_core.strategy_engine_adapter import get_strategy_manager, StrategyConfig
+from trading_core.ai_model_registry import get_all_ai_models
+from trading_core.ai_provider_config_manager import AIProviderConfigManager
 
 # 配置日志
 log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
@@ -45,6 +47,19 @@ _exchange = None
 _risk_manager = None
 _order_executor = None
 _strategy_manager = None
+
+# AI配置管理器（独立初始化，不影响交易系统）
+_ai_config_manager = None
+
+def get_ai_config_manager():
+    """延迟获取AI配置管理器"""
+    global _ai_config_manager
+    
+    if _ai_config_manager is None:
+        _ai_config_manager = AIProviderConfigManager()
+        logger.info('[AI] AIProviderConfigManager initialized')
+    
+    return _ai_config_manager
 
 def get_components():
     """延迟获取核心组件"""
@@ -329,6 +344,63 @@ def close_all_positions():
             'message': '所有持仓已平仓' if success else '部分持仓平仓失败'
         })
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+# ==================== AI模型配置API ====================
+
+@app.route('/api/ai/models', methods=['GET'])
+def api_ai_models():
+    """获取所有AI模型及可用状态"""
+    try:
+        manager = get_ai_config_manager()
+        data = manager.list_models_with_status()
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        logger.error(f"获取AI模型列表失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/ai/providers/<provider_key>', methods=['GET'])
+def api_get_ai_provider(provider_key):
+    """获取指定AI模型配置"""
+    try:
+        manager = get_ai_config_manager()
+        data = manager.get_provider_config(provider_key)
+        
+        if not data:
+            return jsonify({'success': False, 'error': '未找到该AI模型配置'})
+        
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        logger.error(f"获取AI模型配置失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/ai/providers/<provider_key>', methods=['POST'])
+def api_save_ai_provider(provider_key):
+    """保存AI模型配置"""
+    try:
+        manager = get_ai_config_manager()
+        data = request.get_json() or {}
+
+        api_key = (data.get('api_key') or '').strip()
+        base_url = (data.get('base_url') or '').strip()
+        model_name = (data.get('model_name') or '').strip()
+        is_enabled = bool(data.get('is_enabled', False))
+
+        saved = manager.save_provider_config(
+            provider_key=provider_key,
+            api_key=api_key,
+            base_url=base_url,
+            model_name=model_name,
+            is_enabled=is_enabled
+        )
+
+        return jsonify({
+            'success': True,
+            'message': f'{provider_key} 配置已保存',
+            'data': saved
+        })
+    except Exception as e:
+        logger.error(f"保存AI模型配置失败: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 # ==================== WebSocket ====================
