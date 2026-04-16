@@ -34,6 +34,10 @@ class ExchangeClient:
                 'proxies': {
                     'http': proxy,
                     'https': proxy,
+                },
+                'options': {
+                    'adjustForTimeDifference': True,  # 自动调整时间差
+                    'recvWindow': 60000,  # 增加接收窗口到60秒
                 }
             }
             
@@ -41,14 +45,18 @@ class ExchangeClient:
                 logger.warning("⚠️ API密钥未配置，将以只读模式运行")
                 self.exchange = ccxt.binanceus(exchange_config)
             else:
-                exchange_config.update({
-                    'apiKey': api_key,
-                    'secret': secret,
-                    'options': {
-                        'defaultType': 'future',  # 使用合约交易
-                    }
-                })
+                # 合并options而不是覆盖
+                exchange_config['apiKey'] = api_key
+                exchange_config['secret'] = secret
+                exchange_config['options']['defaultType'] = 'future'  # 使用合约交易
                 self.exchange = ccxt.binance(exchange_config)
+            
+            # 同步服务器时间
+            try:
+                self.exchange.load_time_difference()
+                logger.info(f"⏰ 时间差已同步: {self.exchange.options.get('timeDifference', 0)}ms")
+            except Exception as e:
+                logger.warning(f"⚠️ 时间同步失败: {e}")
             
             # 测试连接 - 使用公开API
             try:

@@ -88,7 +88,7 @@ def _register_default_strategy():
         return
     
     # 检查是否已注册
-    if 'MA99_MTF' not in strategy_manager.strategies:
+    if 'MA99_MTF' not in _strategy_manager.strategies:
         # 使用原始策略代码中的币种和周期
         config = StrategyConfig(
             name='MA99_MTF',
