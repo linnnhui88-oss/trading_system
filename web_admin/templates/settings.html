@@ -278,9 +278,8 @@
     <div class="container">
         <div id="alertBox" class="alert"></div>
 
-        <!-- API配置 -->
         <div class="card">
-            <h3>🔑 API配置</h3>
+            <h3>🔑 交易所与通知配置</h3>
             <div class="form-row">
                 <div class="form-group">
                     <label>交易所API Key</label>
@@ -304,7 +303,41 @@
             </div>
         </div>
 
-        <!-- 邮件通知配置 -->
+        <div class="card">
+            <h3>🧠 AI 大模型配置</h3>
+            <p class="info-text" style="margin-bottom: 20px;">配置后即可在"信号监控"页面自由切换AI大脑。只需填写API Key即可启用对应模型，未填写的模型在选择时将呈灰色不可选状态。</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>OpenAI (GPT) API Key</label>
+                    <input type="password" id="gptApiKey" placeholder="sk-...">
+                </div>
+                <div class="form-group">
+                    <label>Gemini API Key</label>
+                    <input type="password" id="geminiApiKey" placeholder="AIza...">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Claude API Key</label>
+                    <input type="password" id="claudeApiKey" placeholder="sk-ant-...">
+                </div>
+                <div class="form-group">
+                    <label>DeepSeek API Key</label>
+                    <input type="password" id="deepseekApiKey" placeholder="sk-...">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>阿里千问 (Qwen) API Key</label>
+                    <input type="password" id="qwenApiKey" placeholder="sk-...">
+                </div>
+                <div class="form-group">
+                    <label>月之暗面 (Kimi) API Key</label>
+                    <input type="password" id="kimiApiKey" placeholder="sk-...">
+                </div>
+            </div>
+        </div>
+
         <div class="card">
             <h3>📧 邮件通知配置</h3>
             <div class="form-group">
@@ -339,7 +372,6 @@
             </div>
         </div>
 
-        <!-- 交易参数 -->
         <div class="card">
             <h3>⚙️ 交易参数</h3>
             <div class="form-row">
@@ -364,7 +396,6 @@
             </div>
         </div>
 
-        <!-- 止盈止损设置 -->
         <div class="card">
             <h3>🎯 止盈止损设置</h3>
             <div class="form-row">
@@ -392,7 +423,6 @@
             </div>
         </div>
 
-        <!-- 系统设置 -->
         <div class="card">
             <h3>🔧 系统设置</h3>
             <div class="form-row">
@@ -412,7 +442,6 @@
             </div>
         </div>
 
-        <!-- 危险区域 -->
         <div class="card danger-zone">
             <h3>⚠️ 危险区域</h3>
             <p style="margin-bottom: 15px; color: #a0aec0;">以下操作可能导致资金损失，请谨慎操作。</p>
@@ -420,7 +449,6 @@
             <button class="btn btn-danger" onclick="resetToDefault()">↩️ 恢复默认设置</button>
         </div>
 
-        <!-- 保存按钮 -->
         <div style="text-align: center; margin-top: 30px;">
             <button class="btn btn-primary" onclick="saveSettings()">💾 保存设置</button>
             <button class="btn btn-secondary" onclick="loadSettings()">🔄 重置</button>
@@ -442,7 +470,6 @@
             document.getElementById('connectionText').textContent = '已断开';
         });
         
-        // 安全设置元素值
         function setElementValue(id, value, isCheckbox = false) {
             const el = document.getElementById(id);
             if (el) {
@@ -454,7 +481,6 @@
             }
         }
 
-        // 加载设置
         async function loadSettings() {
             try {
                 const response = await fetch('/api/settings');
@@ -463,7 +489,7 @@
                 if (data.success) {
                     const settings = data.data;
                     
-                    // 填充表单（安全方式）
+                    // 原有基础设置
                     setElementValue('maxPosition', settings.max_position_usdt || 1000);
                     setElementValue('maxDailyLoss', settings.max_daily_loss_usdt || 500);
                     setElementValue('leverage', settings.default_leverage || 3);
@@ -479,6 +505,14 @@
                     setElementValue('emailPort', settings.email_port || 587);
                     setElementValue('emailUser', settings.email_user || '');
                     setElementValue('emailTo', settings.email_to || '');
+                    
+                    // 新增的 AI 大模型 API Key 回显读取
+                    setElementValue('gptApiKey', settings.gpt_api_key || '');
+                    setElementValue('geminiApiKey', settings.gemini_api_key || '');
+                    setElementValue('claudeApiKey', settings.claude_api_key || '');
+                    setElementValue('qwenApiKey', settings.qwen_api_key || '');
+                    setElementValue('kimiApiKey', settings.kimi_api_key || '');
+                    setElementValue('deepseekApiKey', settings.deepseek_api_key || '');
                 }
             } catch (e) {
                 console.error('加载设置失败:', e);
@@ -486,7 +520,6 @@
             }
         }
 
-        // 保存设置
         async function saveSettings() {
             const settings = {
                 max_position_usdt: parseFloat(document.getElementById('maxPosition').value),
@@ -508,7 +541,15 @@
                 api_key: document.getElementById('apiKey').value,
                 api_secret: document.getElementById('apiSecret').value,
                 telegram_token: document.getElementById('telegramToken').value,
-                telegram_chat_id: document.getElementById('telegramChatId').value
+                telegram_chat_id: document.getElementById('telegramChatId').value,
+                
+                // 提交新增的 AI 大模型 API Key 数据
+                gpt_api_key: document.getElementById('gptApiKey').value,
+                gemini_api_key: document.getElementById('geminiApiKey').value,
+                claude_api_key: document.getElementById('claudeApiKey').value,
+                qwen_api_key: document.getElementById('qwenApiKey').value,
+                kimi_api_key: document.getElementById('kimiApiKey').value,
+                deepseek_api_key: document.getElementById('deepseekApiKey').value
             };
 
             try {
@@ -522,10 +563,8 @@
                 
                 if (data.success) {
                     showAlert('设置保存成功！', 'success');
-                    // 保存成功后立即刷新显示
                     setTimeout(() => {
                         loadSettings();
-                        console.log('[Settings] Settings reloaded after save');
                     }, 500);
                 } else {
                     showAlert('保存失败: ' + (data.error || '未知错误'), 'error');
@@ -535,7 +574,6 @@
             }
         }
 
-        // 显示提示
         function showAlert(message, type) {
             const alertBox = document.getElementById('alertBox');
             alertBox.className = 'alert alert-' + type;
@@ -547,28 +585,22 @@
             }, 5000);
         }
 
-        // 清除所有数据
         function clearAllData() {
             if (!confirm('确定要清除所有交易数据吗？此操作不可恢复！')) {
                 return;
             }
-            
             fetch('/api/clear_data', {method: 'POST'})
                 .then(r => r.json())
                 .then(data => {
-                    if (data.success) {
-                        showAlert('数据已清除', 'success');
-                    }
+                    if (data.success) showAlert('数据已清除', 'success');
                 })
                 .catch(e => showAlert('清除失败: ' + e.message, 'error'));
         }
 
-        // 恢复默认设置
         function resetToDefault() {
             if (!confirm('确定要恢复默认设置吗？')) {
                 return;
             }
-            
             fetch('/api/reset_settings', {method: 'POST'})
                 .then(r => r.json())
                 .then(data => {
@@ -580,7 +612,6 @@
                 .catch(e => showAlert('重置失败: ' + e.message, 'error'));
         }
 
-        // 心跳机制
         let heartbeatInterval = null;
         let lastHeartbeatResponse = Date.now();
         
@@ -588,7 +619,6 @@
             heartbeatInterval = setInterval(() => {
                 const now = Date.now();
                 socket.emit('heartbeat', { timestamp: now, page: 'settings' });
-                console.log('[Heartbeat] Sent at', new Date().toLocaleTimeString());
                 
                 if (now - lastHeartbeatResponse > 120000) {
                     console.warn('[Heartbeat] Timeout detected');
@@ -598,18 +628,12 @@
         
         socket.on('heartbeat_ack', function(data) {
             lastHeartbeatResponse = Date.now();
-            console.log('[Heartbeat] ACK received:', data);
         });
         
-        // 页面可见性检测
         document.addEventListener('visibilitychange', function() {
-            if (!document.hidden) {
-                console.log('[Settings] Page visible, refreshing data...');
-                loadSettings();
-            }
+            if (!document.hidden) loadSettings();
         });
 
-        // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             loadSettings();
             startHeartbeat();

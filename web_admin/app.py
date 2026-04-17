@@ -472,7 +472,6 @@ def api_ohlcv():
 def get_settings():
     """获取设置 - 从运行中的组件和环境变量读取实时值"""
     try:
-        # 从运行中的risk_manager读取实时配置
         from trading_core.risk_manager import get_risk_manager
         risk_manager = get_risk_manager()
         
@@ -482,15 +481,24 @@ def get_settings():
             'binance_secret_key': '',  # 不返回secret
             'telegram_bot_token': os.getenv('TELEGRAM_BOT_TOKEN', ''),
             'telegram_chat_id': os.getenv('TELEGRAM_CHAT_ID', ''),
+            
+            # ====== 新增：AI 配置完全照搬环境变量读取 ======
+            'gpt_api_key': os.getenv('OPENAI_API_KEY', ''),
             'gemini_api_key': os.getenv('GEMINI_API_KEY', ''),
-            # 邮件配置（从环境变量读取）
+            'claude_api_key': os.getenv('CLAUDE_API_KEY', ''),
+            'qwen_api_key': os.getenv('QWEN_API_KEY', ''),
+            'kimi_api_key': os.getenv('KIMI_API_KEY', ''),
+            'deepseek_api_key': os.getenv('DEEPSEEK_API_KEY', ''),
+            
+            # 邮件配置
             'email_enabled': os.getenv('EMAIL_ENABLED', 'false').lower() == 'true',
             'email_host': os.getenv('EMAIL_HOST', 'smtp.gmail.com'),
-            'email_port': int(os.getenv('EMAIL_PORT', 587)),
+            'email_port': int(os.getenv('EMAIL_PORT', 587)) if os.getenv('EMAIL_PORT') else 587,
             'email_user': os.getenv('EMAIL_USER', ''),
             'email_password': '',  # 不返回密码
             'email_to': os.getenv('EMAIL_TO', ''),
-            # 交易参数（从运行中的组件读取实时值）
+            
+            # 交易参数
             'max_position_usdt': risk_manager.max_position_usdt,
             'max_daily_loss_usdt': risk_manager.max_daily_loss_usdt,
             'default_leverage': risk_manager.default_leverage,
@@ -547,6 +555,20 @@ def save_settings():
             new_config['TELEGRAM_BOT_TOKEN'] = data['telegram_token']
         if data.get('telegram_chat_id'):
             new_config['TELEGRAM_CHAT_ID'] = data['telegram_chat_id']
+            
+        # ====== 新增：AI 大模型密钥（完美保持你原版风格） ======
+        if 'gpt_api_key' in data:
+            new_config['OPENAI_API_KEY'] = data['gpt_api_key']
+        if 'gemini_api_key' in data:
+            new_config['GEMINI_API_KEY'] = data['gemini_api_key']
+        if 'claude_api_key' in data:
+            new_config['CLAUDE_API_KEY'] = data['claude_api_key']
+        if 'qwen_api_key' in data:
+            new_config['QWEN_API_KEY'] = data['qwen_api_key']
+        if 'kimi_api_key' in data:
+            new_config['KIMI_API_KEY'] = data['kimi_api_key']
+        if 'deepseek_api_key' in data:
+            new_config['DEEPSEEK_API_KEY'] = data['deepseek_api_key']
         
         # 更新 .env 文件
         updated_lines = []
@@ -609,6 +631,20 @@ def save_settings():
                 os.environ['TELEGRAM_BOT_TOKEN'] = data['telegram_token']
             if data.get('telegram_chat_id'):
                 os.environ['TELEGRAM_CHAT_ID'] = data['telegram_chat_id']
+                
+            # ====== 新增：AI 大模型密钥热更新 ======
+            if 'gpt_api_key' in data:
+                os.environ['OPENAI_API_KEY'] = data['gpt_api_key']
+            if 'gemini_api_key' in data:
+                os.environ['GEMINI_API_KEY'] = data['gemini_api_key']
+            if 'claude_api_key' in data:
+                os.environ['CLAUDE_API_KEY'] = data['claude_api_key']
+            if 'qwen_api_key' in data:
+                os.environ['QWEN_API_KEY'] = data['qwen_api_key']
+            if 'kimi_api_key' in data:
+                os.environ['KIMI_API_KEY'] = data['kimi_api_key']
+            if 'deepseek_api_key' in data:
+                os.environ['DEEPSEEK_API_KEY'] = data['deepseek_api_key']
             
             logger.info("✅ 运行中组件和环境变量已更新")
         except Exception as e:

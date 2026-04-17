@@ -21,6 +21,14 @@ class Config:
     TRAILING_STOP_PERCENT = float(os.getenv('TRAILING_STOP_PERCENT', '1.0'))
     MAX_POSITION_SIZE = float(os.getenv('MAX_POSITION_SIZE', '1000'))
     
+    # AI Models API Configuration
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+    CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY', '')
+    QWEN_API_KEY = os.getenv('QWEN_API_KEY', '')
+    KIMI_API_KEY = os.getenv('KIMI_API_KEY', '')
+    DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
+    
     # Email Notification
     EMAIL_ENABLED = os.getenv('EMAIL_ENABLED', 'false').lower() == 'true'
     EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
