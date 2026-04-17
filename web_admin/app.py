@@ -1093,4 +1093,4 @@ if __name__ == '__main__':
     port = int(os.getenv('WEB_PORT', 5000))
     
     logger.info(f"🌐 Web管理页面启动: http://{host}:{port}")
-    socketio.run(app, host=host, port=port, debug=False)
+    socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True)
