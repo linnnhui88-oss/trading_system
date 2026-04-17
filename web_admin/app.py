@@ -594,6 +594,71 @@ def save_settings():
         logger.error(f"保存设置失败: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+# ==================== 策略AI配置API ====================
+
+@app.route('/api/strategy/ai-config', methods=['POST'])
+def save_strategy_ai_config():
+    """保存策略AI配置（不影响交易执行，仅存储）"""
+    try:
+        data = request.get_json() or {}
+
+        strategy_key = data.get('strategy_key')
+        ai_model = data.get('ai_model')
+        ai_enabled = bool(data.get('ai_enabled', False))
+        follow_global = bool(data.get('follow_global', True))
+
+        if not strategy_key:
+            return jsonify({'success': False, 'error': 'strategy_key不能为空'})
+
+        config_file = os.path.join(log_dir, 'strategy_ai_config.json')
+
+        if os.path.exists(config_file):
+            with open(config_file, 'r', encoding='utf-8') as f:
+                configs = json.load(f)
+        else:
+            configs = {}
+
+        configs[strategy_key] = {
+            'ai_model': ai_model,
+            'ai_enabled': ai_enabled,
+            'follow_global': follow_global,
+            'updated_at': time.time()
+        }
+
+        with open(config_file, 'w', encoding='utf-8') as f:
+            json.dump(configs, f, ensure_ascii=False, indent=2)
+
+        return jsonify({
+            'success': True,
+            'message': '策略AI配置已保存',
+            'data': configs[strategy_key]
+        })
+
+    except Exception as e:
+        logger.error(f"保存策略AI配置失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/strategy/ai-config/<strategy_key>', methods=['GET'])
+def get_strategy_ai_config(strategy_key):
+    """获取策略AI配置"""
+    try:
+        config_file = os.path.join(log_dir, 'strategy_ai_config.json')
+
+        if not os.path.exists(config_file):
+            return jsonify({'success': True, 'data': {}})
+
+        with open(config_file, 'r', encoding='utf-8') as f:
+            configs = json.load(f)
+
+        return jsonify({
+            'success': True,
+            'data': configs.get(strategy_key, {})
+        })
+
+    except Exception as e:
+        logger.error(f"获取策略AI配置失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @socketio.on('connect')
 def handle_connect():
