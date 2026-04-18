@@ -348,6 +348,29 @@
                     <option value="LONG">做多</option>
                     <option value="SHORT">做空</option>
                 </select>
+                <select id="filterActionType">
+                    <option value="">All Actions</option>
+                    <option value="open">open</option>
+                    <option value="add">add</option>
+                    <option value="partial_close">partial_close</option>
+                    <option value="close">close</option>
+                    <option value="take_profit">take_profit</option>
+                    <option value="stop_loss">stop_loss</option>
+                    <option value="manual_close">manual_close</option>
+                </select>
+                <select id="filterSource">
+                    <option value="">All Sources</option>
+                    <option value="strategy_signal">strategy_signal</option>
+                    <option value="manual">manual</option>
+                    <option value="risk_manager">risk_manager</option>
+                    <option value="exchange_sync">exchange_sync</option>
+                </select>
+                <select id="filterPnl">
+                    <option value="">All PnL</option>
+                    <option value="profit">Profit Only</option>
+                    <option value="loss">Loss Only</option>
+                    <option value="flat">Flat Only</option>
+                </select>
                 <select id="filterStatus">
                     <option value="">所有状态</option>
                     <option value="filled">已成交</option>
@@ -368,17 +391,22 @@
                     <tr>
                         <th>时间</th>
                         <th>交易对</th>
+                        <th>Action</th>
+                        <th>Buy/Sell</th>
                         <th>方向</th>
                         <th>策略</th>
                         <th>数量</th>
                         <th>价格</th>
                         <th>盈亏</th>
+                        <th>AI Model</th>
+                        <th>AI Decision</th>
+                        <th>Source</th>
                         <th>状态</th>
                     </tr>
                 </thead>
                 <tbody id="tradesTable">
                     <tr>
-                        <td colspan="8" style="text-align: center; color: #6b7280; padding: 40px;">
+                        <td colspan="13" style="text-align: center; color: #6b7280; padding: 40px;">
                             加载中...
                         </td>
                     </tr>
@@ -436,7 +464,7 @@
                     renderTable();
                 } else {
                     document.getElementById('tradesTable').innerHTML = `
-                        <tr><td colspan="8" style="text-align: center; color: #f56565; padding: 40px;">
+                        <tr><td colspan="13" style="text-align: center; color: #f56565; padding: 40px;">
                             ????: ${data.error}
                         </td></tr>
                     `;
@@ -469,13 +497,15 @@
                 symbol: displaySymbol,
                 action: action,
                 strategy: fill.strategy_name || 'N/A',
-                action_type: fill.action_type || '',
+                action_type: (fill.action_type || '').toLowerCase(),
+                side: (fill.side || '').toUpperCase(),
                 amount: Number(fill.quantity || 0),
                 price: Number(fill.price || 0),
                 pnl: Number(fill.realized_pnl || 0),
                 status: 'filled',
                 signal_source: fill.signal_source || '',
-                ai_model: fill.ai_model || ''
+                ai_model: fill.ai_model || '',
+                ai_decision: (fill.ai_decision || '').toUpperCase()
             };
         }
 
@@ -688,28 +718,31 @@
             const pageData = tradesData.slice(start, end);
 
             if (pageData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #6b7280; padding: 40px;">??????</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" style="text-align: center; color: #6b7280; padding: 40px;">??????</td></tr>';
                 return;
             }
 
             tbody.innerHTML = pageData.map(trade => {
                 const date = new Date(trade.timestamp);
                 const pnl = trade.pnl || 0;
-                const strategyText = trade.action_type
-                    ? `${trade.strategy || 'N/A'} (${trade.action_type})`
-                    : (trade.strategy || 'N/A');
+                const buySell = trade.side || (trade.action === 'LONG' ? 'BUY' : 'SELL');
 
                 return `
                     <tr>
                         <td>${date.toLocaleString()}</td>
                         <td>${trade.symbol}</td>
+                        <td>${trade.action_type || 'N/A'}</td>
+                        <td>${buySell}</td>
                         <td class="${trade.action === 'LONG' ? 'positive' : 'negative'}">${trade.action}</td>
-                        <td>${strategyText}</td>
+                        <td>${trade.strategy || 'N/A'}</td>
                         <td>${Number(trade.amount || 0).toFixed(4)}</td>
                         <td>$${Number(trade.price || 0).toFixed(2)}</td>
                         <td class="${pnl >= 0 ? 'positive' : 'negative'}">
                             ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
                         </td>
+                        <td>${trade.ai_model || '-'}</td>
+                        <td>${trade.ai_decision || '-'}</td>
+                        <td>${trade.signal_source || '-'}</td>
                         <td><span class="badge badge-${trade.status}">${trade.status}</span></td>
                     </tr>
                 `;
@@ -738,6 +771,9 @@
         function applyFilters() {
             const symbol = document.getElementById('filterSymbol').value;
             const side = document.getElementById('filterSide').value;
+            const actionType = document.getElementById('filterActionType').value;
+            const source = document.getElementById('filterSource').value;
+            const pnlType = document.getElementById('filterPnl').value;
             const status = document.getElementById('filterStatus').value;
             const filterDate = document.getElementById('filterDate').value;
 
@@ -748,6 +784,11 @@
                     if (selected !== current) return false;
                 }
                 if (side && trade.action !== side) return false;
+                if (actionType && (trade.action_type || '').toLowerCase() !== actionType.toLowerCase()) return false;
+                if (source && (trade.signal_source || '').toLowerCase() !== source.toLowerCase()) return false;
+                if (pnlType === 'profit' && !(trade.pnl > 0)) return false;
+                if (pnlType === 'loss' && !(trade.pnl < 0)) return false;
+                if (pnlType === 'flat' && !(trade.pnl === 0)) return false;
                 if (status && trade.status !== status) return false;
                 if (filterDate) {
                     const tradeDate = new Date(trade.timestamp);
@@ -768,6 +809,9 @@
         function resetFilters() {
             document.getElementById('filterSymbol').value = '';
             document.getElementById('filterSide').value = '';
+            document.getElementById('filterActionType').value = '';
+            document.getElementById('filterSource').value = '';
+            document.getElementById('filterPnl').value = '';
             document.getElementById('filterStatus').value = '';
             document.getElementById('filterDate').value = '';
             tradesData = [...allTradesData];

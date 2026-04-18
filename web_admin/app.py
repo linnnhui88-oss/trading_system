@@ -1186,7 +1186,92 @@ def api_market_symbols():
     try:
         quote = request.args.get('quote_asset', 'USDT')
         res = get_market_data_service().get_symbols(quote_asset=quote)
-        return jsonify(res)
+        if not res.get('success'):
+            return jsonify(res)
+
+        items = res.get('data') or []
+        symbols = [item.get('symbol', '') for item in items if item.get('symbol')]
+        return jsonify({
+            'success': True,
+            'data': symbols,
+            'items': items,
+            'message': ''
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/market/ticker', methods=['GET'])
+def api_market_ticker():
+    """Get ticker snapshot for one symbol."""
+    try:
+        symbol = request.args.get('symbol', 'BTCUSDT')
+        res = get_market_data_service().get_ticker(symbol)
+        if not res.get('success'):
+            return jsonify(res)
+
+        ticker = res.get('data') or {}
+        return jsonify({
+            'success': True,
+            'data': {
+                'symbol': ticker.get('symbol', symbol),
+                'price': ticker.get('price', 0),
+                'change_24h': ticker.get('price_change_percent', 0),
+                'high_24h': ticker.get('high_24h', 0),
+                'low_24h': ticker.get('low_24h', 0),
+                'volume_24h': ticker.get('volume_24h', 0),
+                'raw': ticker,
+            },
+            'message': ''
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/market/klines', methods=['GET'])
+def api_market_klines():
+    """Get klines for one symbol and interval."""
+    try:
+        symbol = request.args.get('symbol', 'BTCUSDT')
+        interval = request.args.get('interval', '5m')
+        limit = request.args.get('limit', 200, type=int)
+
+        res = get_market_data_service().get_klines(symbol=symbol, interval=interval, limit=limit)
+        if not res.get('success'):
+            return jsonify(res)
+
+        data = res.get('data') or {}
+        return jsonify({
+            'success': True,
+            'data': data,
+            'message': ''
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/market/depth', methods=['GET'])
+def api_market_depth():
+    """Get order book depth for one symbol."""
+    try:
+        symbol = request.args.get('symbol', 'BTCUSDT')
+        limit = request.args.get('limit', 5, type=int)
+
+        res = get_market_data_service().get_depth(symbol=symbol, limit=limit)
+        if not res.get('success'):
+            return jsonify(res)
+
+        depth = res.get('data') or {}
+        bids = [[str(item.get('price', 0)), str(item.get('quantity', 0))] for item in (depth.get('bids') or [])]
+        asks = [[str(item.get('price', 0)), str(item.get('quantity', 0))] for item in (depth.get('asks') or [])]
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'symbol': depth.get('symbol', symbol),
+                'bids': bids,
+                'asks': asks,
+                'raw': depth,
+            },
+            'message': ''
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
