@@ -86,6 +86,12 @@ class TradeFillRepository:
                 ON trade_fills(executed_at)
             """)
 
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_fills_exchange_trade_id_unique
+                ON trade_fills(exchange_trade_id)
+                WHERE exchange_trade_id IS NOT NULL AND exchange_trade_id != ''
+            """)
+
             conn.commit()
             conn.close()
 
@@ -226,6 +232,52 @@ class TradeFillRepository:
             return None
 
         return self._row_to_dict(row)
+
+    def get_fill_by_exchange_trade_id(self, exchange_trade_id: str) -> Optional[Dict[str, Any]]:
+        exchange_trade_id = str(exchange_trade_id or '').strip()
+        if not exchange_trade_id:
+            return None
+
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                id,
+                strategy_name,
+                symbol,
+                side,
+                position_side,
+                action_type,
+                order_id,
+                exchange_trade_id,
+                quantity,
+                price,
+                realized_pnl,
+                fee,
+                fee_asset,
+                ai_model,
+                ai_decision,
+                signal_source,
+                signal_reason,
+                executed_at,
+                created_at
+            FROM trade_fills
+            WHERE exchange_trade_id = ?
+            LIMIT 1
+        """, (exchange_trade_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if not row:
+            return None
+        return self._row_to_dict(row)
+
+    def create_fill_if_not_exists(self, fill_data: Dict[str, Any]) -> Dict[str, Any]:
+        exchange_trade_id = str(fill_data.get("exchange_trade_id") or "").strip()
+        if exchange_trade_id:
+            existing = self.get_fill_by_exchange_trade_id(exchange_trade_id)
+            if existing:
+                return existing
+        return self.create_fill(fill_data)
 
     def list_fills(
         self,

@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from trading_core.exchange_client import get_exchange_client
 from trading_core.risk_manager import get_risk_manager
+from trading_core.trade_fill_repository import TradeFillRepository
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class OrderExecutor:
     def __init__(self):
         self.exchange = get_exchange_client()
         self.risk_manager = get_risk_manager()
+        self.trade_fill_repo = TradeFillRepository()
         self.db_path = Path(__file__).parent.parent / 'data' / 'trade_history.db'
         self._init_db()
         self.auto_trading = False
@@ -225,10 +227,86 @@ class OrderExecutor:
             
                 conn.commit()
                 conn.close()
+                self._record_trade_fill(
+                    symbol=symbol,
+                    action=action,
+                    amount=amount,
+                    price=price,
+                    order_id=order_id,
+                    timeframe=timeframe,
+                    pnl=pnl,
+                    notes=notes,
+                )
             except Exception as e:
                 logger.error(f"记录交易失败: {e}")
                 if conn:
                     conn.close()
+
+    def _record_trade_fill(
+        self,
+        symbol: str,
+        action: str,
+        amount: float,
+        price: float,
+        order_id: str,
+        timeframe: str,
+        pnl: float = None,
+        notes: str = None
+    ):
+        """Write normalized execution events into trade_fills."""
+        try:
+            action_upper = (action or "").strip().upper()
+            is_close_event = pnl is not None
+            if is_close_event:
+                side = "SELL" if action_upper == "LONG" else "BUY"
+            else:
+                side = "BUY" if action_upper == "LONG" else "SELL"
+            position_side = action_upper if action_upper in {"LONG", "SHORT"} else ""
+            order_id_str = str(order_id or "")
+            note_str = notes or ""
+
+            action_type = "open"
+            signal_source = "strategy_signal"
+            if pnl is not None:
+                if order_id_str.startswith("tp_sl_"):
+                    reason = order_id_str.replace("tp_sl_", "").upper()
+                    if "TAKE_PROFIT" in reason:
+                        action_type = "take_profit"
+                    elif "STOP_LOSS" in reason:
+                        action_type = "stop_loss"
+                    else:
+                        action_type = "close"
+                    signal_source = "risk_manager"
+                elif order_id_str.startswith("manual_"):
+                    action_type = "manual_close"
+                    signal_source = "manual"
+                else:
+                    action_type = "close"
+
+            strategy_name = "MA99_MTF"
+            if timeframe and timeframe not in {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}:
+                strategy_name = timeframe
+
+            self.trade_fill_repo.create_fill({
+                "strategy_name": strategy_name,
+                "symbol": (symbol or "").replace("/", "").upper(),
+                "side": side,
+                "position_side": position_side,
+                "action_type": action_type,
+                "order_id": order_id_str,
+                "exchange_trade_id": "",
+                "quantity": float(amount or 0),
+                "price": float(price or 0),
+                "realized_pnl": float(pnl or 0),
+                "fee": 0,
+                "fee_asset": "",
+                "ai_model": "",
+                "ai_decision": "EXECUTE",
+                "signal_source": signal_source,
+                "signal_reason": note_str,
+            })
+        except Exception as e:
+            logger.warning(f"Trade fill write skipped: {e}")
     
     def _record_signal(self, symbol: str, timeframe: str, action: str,
                       price: float, rsi: float, executed: bool = False,
@@ -523,6 +601,116 @@ class OrderExecutor:
             logger.error("❌ 部分持仓平仓失败，请手动检查")
         
         return success
+
+    @staticmethod
+    def _normalize_symbol_key(symbol: str) -> str:
+        return (symbol or "").replace("/", "").upper().strip()
+
+    def close_position_manual(self, symbol: str) -> Dict:
+        """
+        手动平仓（单个交易对），并写入交易记录。
+        """
+        try:
+            target_key = self._normalize_symbol_key(symbol)
+            if not target_key:
+                return {'success': False, 'error': 'symbol is required'}
+
+            positions = self.exchange.get_positions()
+            target_pos = None
+            for pos in positions:
+                if self._normalize_symbol_key(pos.get('symbol', '')) == target_key:
+                    target_pos = pos
+                    break
+
+            if not target_pos:
+                return {'success': False, 'error': f'No active position found for {symbol}'}
+
+            exchange_symbol = target_pos.get('symbol', symbol)
+            side = target_pos.get('side', 'LONG')
+            amount = float(target_pos.get('contracts') or 0)
+            entry_price = float(target_pos.get('entry_price') or 0)
+
+            if amount <= 0:
+                return {'success': False, 'error': f'Invalid position size for {exchange_symbol}'}
+
+            success = self.exchange.close_position(exchange_symbol)
+            if not success:
+                return {'success': False, 'error': f'Close position failed for {exchange_symbol}'}
+
+            close_price = self.exchange.get_current_price(exchange_symbol) or float(target_pos.get('mark_price') or entry_price or 0)
+            close_price = float(close_price or 0)
+            if close_price <= 0:
+                close_price = entry_price
+
+            if side == 'LONG':
+                pnl = (close_price - entry_price) * amount
+            else:
+                pnl = (entry_price - close_price) * amount
+
+            order_id = f"manual_{int(time.time() * 1000)}"
+            notes = f"MANUAL_CLOSE {exchange_symbol} entry={entry_price:.6f} close={close_price:.6f}"
+            self._record_trade(
+                exchange_symbol,
+                side,
+                amount,
+                close_price,
+                order_id,
+                'MANUAL',
+                0,
+                pnl=pnl,
+                notes=notes
+            )
+            self.risk_manager.record_trade(pnl)
+
+            with self.positions_lock:
+                remove_keys = [k for k in self.positions.keys() if self._normalize_symbol_key(k) == target_key]
+                for key in remove_keys:
+                    del self.positions[key]
+
+            return {
+                'success': True,
+                'symbol': exchange_symbol,
+                'side': side,
+                'amount': amount,
+                'entry_price': entry_price,
+                'close_price': close_price,
+                'pnl': pnl,
+            }
+        except Exception as e:
+            logger.error(f"手动平仓失败: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def close_all_positions_manual(self) -> Dict:
+        """
+        手动全平，并对每个持仓写入交易记录。
+        """
+        try:
+            positions = self.exchange.get_positions()
+            if not positions:
+                return {'success': True, 'closed_count': 0, 'failed_count': 0, 'details': []}
+
+            details = []
+            seen = set()
+            for pos in positions:
+                symbol = pos.get('symbol', '')
+                key = self._normalize_symbol_key(symbol)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                details.append(self.close_position_manual(symbol))
+
+            closed_count = sum(1 for item in details if item.get('success'))
+            failed_count = sum(1 for item in details if not item.get('success'))
+
+            return {
+                'success': failed_count == 0,
+                'closed_count': closed_count,
+                'failed_count': failed_count,
+                'details': details,
+            }
+        except Exception as e:
+            logger.error(f"手动全平失败: {e}")
+            return {'success': False, 'closed_count': 0, 'failed_count': 0, 'details': [], 'error': str(e)}
     
     def open_position(self, symbol: str, side: str, usdt_amount: float,
                      leverage: int = 3, atr_value: float = None,

@@ -504,7 +504,14 @@
                     setElementValue('emailHost', settings.email_host || '');
                     setElementValue('emailPort', settings.email_port || 587);
                     setElementValue('emailUser', settings.email_user || '');
+                    setElementValue('emailPassword', settings.email_password || '');
                     setElementValue('emailTo', settings.email_to || '');
+
+                    // 交易所与通知配置回显
+                    setElementValue('apiKey', settings.binance_api_key || '');
+                    setElementValue('apiSecret', settings.binance_secret_key || '');
+                    setElementValue('telegramToken', settings.telegram_bot_token || '');
+                    setElementValue('telegramChatId', settings.telegram_chat_id || '');
                     
                     // 新增的 AI 大模型 API Key 回显读取
                     setElementValue('gptApiKey', settings.gpt_api_key || '');

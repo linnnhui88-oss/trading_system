@@ -320,6 +320,59 @@ class ExchangeClient:
         ticker = self.get_ticker(symbol)
         return ticker['last'] if ticker else None
 
+    def get_recent_account_trades(
+        self,
+        symbol: Optional[str] = None,
+        since_ms: Optional[int] = None,
+        limit: int = 200
+    ) -> List[Dict]:
+        """Fetch recent account trades from exchange."""
+        def _fetch_once(sym: Optional[str]) -> List[Dict]:
+            kwargs = {
+                'symbol': sym if sym else None,
+                'since': since_ms,
+                'limit': limit
+            }
+            return self.exchange.fetch_my_trades(**kwargs) or []
+
+        if not symbol:
+            try:
+                return _fetch_once(None)
+            except Exception as e:
+                logger.warning(f"Fetch account trades without symbol failed: {e}")
+                return []
+
+        symbol_raw = (symbol or '').strip().upper()
+        variants = []
+        if symbol_raw:
+            variants.append(symbol_raw)
+            if '/USDT' in symbol_raw and ':USDT' not in symbol_raw:
+                variants.append(symbol_raw.replace('/USDT', '/USDT:USDT'))
+            if '/' in symbol_raw:
+                variants.append(symbol_raw.replace('/', ''))
+
+        # Try matched market symbol names from loaded markets
+        try:
+            markets = self.exchange.load_markets()
+            target_key = symbol_raw.replace('/', '').replace(':USDT', '')
+            for market_symbol in markets.keys():
+                key = market_symbol.upper().replace('/', '').replace(':USDT', '')
+                if key == target_key and market_symbol not in variants:
+                    variants.append(market_symbol)
+        except Exception:
+            pass
+
+        last_error = None
+        for sym in variants:
+            try:
+                return _fetch_once(sym)
+            except Exception as e:
+                last_error = e
+                continue
+
+        logger.warning(f"Fetch account trades failed (symbol={symbol}, variants={variants}): {last_error}")
+        return []
+
 # 单例模式
 _exchange_client = None
 
