@@ -24,6 +24,8 @@ from strategy_engine import (
 # 导入策略日志记录器
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__))))
 from StrategyLogger import StrategyLogger
+from trading_core.strategy_config_repository import StrategyConfigRepository
+from trading_core.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,8 @@ class StrategyEngineAdapter:
         
         # 策略日志记录器
         self.strategy_logger = StrategyLogger("MA99_MTF")
+        self.strategy_repo = StrategyConfigRepository()
+        self.llm_service = LLMService()
         
         # 注册默认MA99策略
         self._register_default_strategy()
@@ -131,6 +135,27 @@ class StrategyEngineAdapter:
         self.strategies[config.name] = config
         self.status[config.name] = StrategyStatus.STOPPED
         logger.info(f"✅ MA99_MTF策略已注册 - 使用 strategy_engine.py 核心代码")
+
+    def _get_runtime_scan_targets(self) -> List[Dict]:
+        """Get runtime scan targets from strategy configs."""
+        try:
+            configs = self.strategy_repo.list_strategy_configs(status='running')
+            targets = []
+            for cfg in configs:
+                symbol = (cfg.get('symbol') or '').strip().upper()
+                interval = (cfg.get('interval') or '5m').strip()
+                if not symbol:
+                    continue
+                if interval not in TIMEFRAMES:
+                    interval = '5m'
+                merged = dict(cfg)
+                merged['symbol'] = symbol
+                merged['interval'] = interval
+                targets.append(merged)
+            return targets
+        except Exception as e:
+            logger.warning(f"Load runtime strategy configs failed: {e}")
+            return []
     
     def register_strategy(self, config: StrategyConfig) -> bool:
         """注册策略"""
@@ -229,82 +254,93 @@ class StrategyEngineAdapter:
             logger.debug(f'广播扫描完成失败: {e}')
     
     def _scan_single_strategy(self, strategy_config):
-        """单策略扫描"""
-        single_strategy = strategy_config.get('singleStrategy', 'MA99_MTF')
-        
-        for symbol in SYMBOLS:
-            for timeframe in TIMEFRAMES:
-                trace_id = None
-                try:
-                    # 目前只支持MA99策略
-                    if single_strategy == 'MA99_MTF':
-                        # 1. 记录扫描日志
-                        trace_id = self.strategy_logger.log_scanned(
-                            symbol=symbol,
-                            timeframe=timeframe,
-                            indicators={},
-                            current_price=0  # 稍后更新
-                        )
-                        
-                        signal, last_bar, rsi = check_ma99_strategy(symbol, timeframe)
-                        
-                        if not signal or last_bar is None:
-                            # 记录跳过日志 - 无信号
-                            self.strategy_logger.log_skipped(
-                                trace_id=trace_id,
-                                symbol=symbol,
-                                reason="NoSignal",
-                                details={"timeframe": timeframe}
-                            )
-                            continue
-                        
-                        # 更新扫描日志中的价格
-                        current_price = last_bar['close']
-                        
-                        # 大周期审查
-                        if not verify_htf_alignment(symbol, timeframe, signal):
-                            # 记录跳过日志 - 大周期不一致
-                            self.strategy_logger.log_skipped(
-                                trace_id=trace_id,
-                                symbol=symbol,
-                                reason="HTF_Misalignment",
-                                details={"signal": signal, "price": current_price}
-                            )
-                            continue
-                        
-                        # 检查重复信号
-                        memory_key = f"{symbol}_{timeframe}_{signal}"
-                        current_bar_time = last_bar['timestamp']
-                        
-                        if self.signal_memory.get(memory_key) == current_bar_time:
-                            # 记录跳过日志 - 重复信号
-                            self.strategy_logger.log_skipped(
-                                trace_id=trace_id,
-                                symbol=symbol,
-                                reason="DuplicateSignal",
-                                details={"signal": signal, "bar_time": current_bar_time}
-                            )
-                            continue
-                        
-                        # 记录信号
-                        self.signal_memory[memory_key] = current_bar_time
-                        save_memory(self.signal_memory)
-                        
-                        logger.info(f"🎯 [{single_strategy}] 信号确认！{symbol} ({timeframe}) -> {signal}，现价 {last_bar['close']}")
-                        
-                        # 处理信号
-                        config = self.strategies.get('MA99_MTF')
-                        if config:
-                            self._on_signal(config, symbol, timeframe, signal, last_bar, rsi, trace_id)
-                        
-                except Exception as e:
-                    logger.error(f"扫描信号失败 {symbol} {timeframe}: {e}")
-                    if trace_id:
-                        self.strategy_logger.log_system_error(
-                            component="StrategyEngine",
-                            error_msg=str(e)
-                        )
-    
+        """???????????????????????"""
+        runtime_targets = self._get_runtime_scan_targets()
+
+        # ????????????????????
+        if not runtime_targets:
+            single_strategy = strategy_config.get('singleStrategy', 'MA99_MTF')
+            runtime_targets = []
+            for symbol in SYMBOLS:
+                for timeframe in TIMEFRAMES:
+                    runtime_targets.append({
+                        'strategy_key': single_strategy,
+                        'strategy_name': single_strategy,
+                        'symbol': symbol,
+                        'interval': timeframe,
+                        'ai_enabled': True,
+                        'ai_model': '',
+                        'telegram_notify': True,
+                        'auto_trade_follow_global': True,
+                    })
+
+        for target in runtime_targets:
+            symbol = target.get('symbol', '')
+            timeframe = target.get('interval', '5m')
+            strategy_name = target.get('strategy_name') or target.get('strategy_key') or 'MA99_MTF'
+            trace_id = None
+            try:
+                if strategy_name != 'MA99_MTF':
+                    continue
+
+                trace_id = self.strategy_logger.log_scanned(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    indicators={},
+                    current_price=0
+                )
+
+                signal, last_bar, rsi = check_ma99_strategy(symbol, timeframe)
+
+                if not signal or last_bar is None:
+                    self.strategy_logger.log_skipped(
+                        trace_id=trace_id,
+                        symbol=symbol,
+                        reason="NoSignal",
+                        details={"timeframe": timeframe}
+                    )
+                    continue
+
+                current_price = last_bar['close']
+
+                if not verify_htf_alignment(symbol, timeframe, signal):
+                    self.strategy_logger.log_skipped(
+                        trace_id=trace_id,
+                        symbol=symbol,
+                        reason="HTF_Misalignment",
+                        details={"signal": signal, "price": current_price}
+                    )
+                    continue
+
+                memory_key = f"{symbol}_{timeframe}_{signal}"
+                current_bar_time = last_bar['timestamp']
+
+                if self.signal_memory.get(memory_key) == current_bar_time:
+                    self.strategy_logger.log_skipped(
+                        trace_id=trace_id,
+                        symbol=symbol,
+                        reason="DuplicateSignal",
+                        details={"signal": signal, "bar_time": current_bar_time}
+                    )
+                    continue
+
+                self.signal_memory[memory_key] = current_bar_time
+                save_memory(self.signal_memory)
+
+                logger.info(f"?? [{strategy_name}] ?????{symbol} ({timeframe}) -> {signal}??? {last_bar['close']}")
+
+                config = self.strategies.get('MA99_MTF')
+                if config:
+                    self._on_signal(config, symbol, timeframe, signal, last_bar, rsi, trace_id, runtime_cfg=target)
+
+            except Exception as e:
+                logger.error(f"?????? {symbol} {timeframe}: {e}")
+                if trace_id:
+                    self.strategy_logger.log_system_error(
+                        component="StrategyEngine",
+                        error_msg=str(e)
+                    )
+
     def _scan_consensus_strategy(self, strategy_config):
         """多策略共识扫描"""
         consensus_strategies = strategy_config.get('consensusStrategies', ['MA99_MTF'])
@@ -372,35 +408,56 @@ class StrategyEngineAdapter:
                 except Exception as e:
                     logger.error(f"共识扫描失败 {symbol} {timeframe}: {e}")
     
-    def _on_signal(self, config: StrategyConfig, symbol: str, timeframe: str, 
-                   action: str, last_bar: Dict, rsi: float, trace_id: str = None):
-        """处理信号"""
-        # 获取实时价格（而不是K线收盘价）
+    
+    def _on_signal(self, config: StrategyConfig, symbol: str, timeframe: str,
+                   action: str, last_bar: Dict, rsi: float, trace_id: str = None, runtime_cfg: Dict = None):
+        """????"""
+        runtime_cfg = runtime_cfg or {}
+        ai_enabled = bool(runtime_cfg.get('ai_enabled', True))
+        ai_model = (runtime_cfg.get('ai_model') or '').strip()
+        telegram_notify = bool(runtime_cfg.get('telegram_notify', True))
+
+        # ??????????K?????
         try:
             ticker = self.exchange.get_ticker(symbol)
             price = ticker['last'] if ticker else last_bar['close']
         except Exception as e:
-            logger.warning(f"获取实时价格失败，使用K线收盘价: {e}")
+            logger.warning(f"???????????K????: {e}")
             price = last_bar['close']
-        
-        # 获取AI分析
+
+        # AI ???????????
         ai_advice = get_ai_analysis(symbol, timeframe, action, price, rsi)
-        ai_confidence = 0.5  # 默认置信度
-        
-        if ai_advice and ai_advice != "⚠️ AI 分析暂时不可用，请严格带好止损独立决策。":
-            logger.info(f"🧠 AI分析: {ai_advice[:100]}...")
-            # 简单解析AI建议中的置信度（如果有的话）
-            if "置信度" in ai_advice or "confidence" in ai_advice.lower():
-                try:
-                    # 尝试提取置信度数值
-                    import re
-                    match = re.search(r'(\d+)%', ai_advice)
-                    if match:
-                        ai_confidence = int(match.group(1)) / 100.0
-                except:
-                    pass
-        
-        # 记录AI决策日志
+        ai_confidence = 0.5
+        ai_decision = "EXECUTE"
+
+        if ai_enabled and ai_model:
+            try:
+                llm_payload = {
+                    'symbol': symbol.replace('/', '').upper(),
+                    'interval': timeframe,
+                    'signal': 'BUY' if action == 'LONG' else 'SELL',
+                    'strategy_name': runtime_cfg.get('strategy_name') or config.name,
+                    'price': price,
+                    'indicators': {'rsi': rsi},
+                    'risk_context': {'global_auto_trading': bool(self.order_executor.auto_trading)}
+                }
+                llm_result = self.llm_service.analyze_trade(ai_model, llm_payload)
+                if llm_result.get('success'):
+                    ai_confidence = float(llm_result.get('confidence', ai_confidence) or ai_confidence)
+                    ai_decision = str(llm_result.get('decision', 'SKIP')).upper()
+                    ai_reason = llm_result.get('reason', '')
+                    ai_advice = f"[{ai_model}] {ai_decision}: {ai_reason}"
+                else:
+                    ai_decision = 'SKIP'
+                    ai_advice = f"[{ai_model}] SKIP: {llm_result.get('reason', 'LLM unavailable')}"
+            except Exception as e:
+                ai_decision = 'SKIP'
+                ai_advice = f"[{ai_model}] SKIP: AI call failed ({e})"
+
+        if ai_advice:
+            logger.info(f"?? AI??: {ai_advice[:120]}")
+
+        # ??AI????
         if trace_id:
             self.strategy_logger.log_ai_decision(
                 trace_id=trace_id,
@@ -409,11 +466,13 @@ class StrategyEngineAdapter:
                 confidence_score=ai_confidence,
                 prompt_tokens=0
             )
-        
-        # 执行交易（如果自动交易开启）
+
+        # ????????????????
         executed = False
         api_latency = 0
-        if self.order_executor.auto_trading:
+        should_execute_by_ai = ai_decision in {'EXECUTE', 'REDUCE'}
+
+        if self.order_executor.auto_trading and should_execute_by_ai:
             start_time = time.time()
             executed = self.order_executor.execute_signal(
                 symbol=symbol,
@@ -422,14 +481,13 @@ class StrategyEngineAdapter:
                 price=price,
                 rsi=rsi,
                 confidence=ai_confidence,
-                strategy='MA99_MTF'
+                strategy=(runtime_cfg.get('strategy_name') or 'MA99_MTF')
             )
-            api_latency = int((time.time() - start_time) * 1000)  # 毫秒
-        
-        # 记录开仓日志（如果执行成功）
+            api_latency = int((time.time() - start_time) * 1000)
+
+        # ??????????????
         if executed and trace_id:
             try:
-                # 获取持仓信息
                 positions = self.exchange.get_positions()
                 position = next((p for p in positions if p['symbol'] == symbol), None)
                 if position:
@@ -443,20 +501,20 @@ class StrategyEngineAdapter:
                         api_latency_ms=api_latency
                     )
             except Exception as e:
-                logger.error(f"记录开仓日志失败: {e}")
+                logger.error(f"????????: {e}")
         elif not executed and trace_id:
-            # 记录跳过日志 - 执行失败
+            skip_reason = "ExecutionFailed" if should_execute_by_ai else "AIRejected"
             self.strategy_logger.log_skipped(
                 trace_id=trace_id,
                 symbol=symbol,
-                reason="ExecutionFailed",
-                details={"action": action, "price": price}
+                reason=skip_reason,
+                details={"action": action, "price": price, "ai_decision": ai_decision}
             )
-        
-        # 发送Telegram提醒
-        send_telegram_alert(symbol, timeframe, action, price, rsi, ai_advice, executed)
-        
-        # 记录信号
+
+        # ??Telegram???????????????
+        if telegram_notify:
+            send_telegram_alert(symbol, timeframe, action, price, rsi, ai_advice, executed)
+
         signal_record = {
             'timestamp': datetime.now().isoformat(),
             'strategy': config.name,
@@ -466,7 +524,9 @@ class StrategyEngineAdapter:
             'price': price,
             'rsi': rsi,
             'executed': executed,
-            'ai_advice': ai_advice
+            'ai_advice': ai_advice,
+            'ai_model': ai_model,
+            'ai_decision': ai_decision
         }
         
         self.signal_history.append(signal_record)

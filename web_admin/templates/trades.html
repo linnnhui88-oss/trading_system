@@ -416,6 +416,7 @@
         });
         
         let currentPage = 1;
+        let allTradesData = [];
         let tradesData = [];
         const itemsPerPage = 20;
         let equityChart = null;
@@ -423,28 +424,59 @@
 
         async function loadTrades() {
             try {
-                const response = await fetch('/api/trades?limit=100');
+                const response = await fetch('/api/trades/fills?page=1&page_size=1000');
                 const data = await response.json();
-                
+
                 if (data.success) {
-                    tradesData = data.data;
+                    const items = (data.data && data.data.items) ? data.data.items : [];
+                    allTradesData = items.map(normalizeFillToTrade);
+                    tradesData = [...allTradesData];
                     updateStats();
                     renderEquityCurve();
                     renderTable();
                 } else {
                     document.getElementById('tradesTable').innerHTML = `
                         <tr><td colspan="8" style="text-align: center; color: #f56565; padding: 40px;">
-                            加载失败: ${data.error}
+                            ????: ${data.error}
                         </td></tr>
                     `;
                 }
             } catch (e) {
-                // 使用模拟数据
-                tradesData = generateMockTrades();
+                allTradesData = generateMockTrades();
+                tradesData = [...allTradesData];
                 updateStats();
                 renderEquityCurve();
                 renderTable();
             }
+        }
+
+        function normalizeSymbol(symbol) {
+            return (symbol || '').toString().replace('/', '').toUpperCase();
+        }
+
+        function normalizeFillToTrade(fill) {
+            const rawSide = (fill.position_side || '').toUpperCase();
+            const action = rawSide === 'LONG' || rawSide === 'SHORT'
+                ? rawSide
+                : ((fill.side || '').toUpperCase() === 'BUY' ? 'LONG' : 'SHORT');
+            const symbol = normalizeSymbol(fill.symbol || '');
+            const displaySymbol = symbol.includes('USDT')
+                ? symbol.replace('USDT', '/USDT')
+                : symbol;
+
+            return {
+                timestamp: fill.executed_at || fill.created_at || new Date().toISOString(),
+                symbol: displaySymbol,
+                action: action,
+                strategy: fill.strategy_name || 'N/A',
+                action_type: fill.action_type || '',
+                amount: Number(fill.quantity || 0),
+                price: Number(fill.price || 0),
+                pnl: Number(fill.realized_pnl || 0),
+                status: 'filled',
+                signal_source: fill.signal_source || '',
+                ai_model: fill.ai_model || ''
+            };
         }
 
         function generateMockTrades() {
@@ -656,22 +688,25 @@
             const pageData = tradesData.slice(start, end);
 
             if (pageData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #6b7280; padding: 40px;">暂无交易记录</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #6b7280; padding: 40px;">??????</td></tr>';
                 return;
             }
 
             tbody.innerHTML = pageData.map(trade => {
                 const date = new Date(trade.timestamp);
                 const pnl = trade.pnl || 0;
-                
+                const strategyText = trade.action_type
+                    ? `${trade.strategy || 'N/A'} (${trade.action_type})`
+                    : (trade.strategy || 'N/A');
+
                 return `
                     <tr>
                         <td>${date.toLocaleString()}</td>
                         <td>${trade.symbol}</td>
                         <td class="${trade.action === 'LONG' ? 'positive' : 'negative'}">${trade.action}</td>
-                        <td>${trade.strategy || 'N/A'}</td>
-                        <td>${parseFloat(trade.amount).toFixed(4)}</td>
-                        <td>$${parseFloat(trade.price).toFixed(2)}</td>
+                        <td>${strategyText}</td>
+                        <td>${Number(trade.amount || 0).toFixed(4)}</td>
+                        <td>$${Number(trade.price || 0).toFixed(2)}</td>
                         <td class="${pnl >= 0 ? 'positive' : 'negative'}">
                             ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
                         </td>
@@ -680,7 +715,8 @@
                 `;
             }).join('');
 
-            document.getElementById('pageInfo').textContent = `第 ${currentPage} 页 / 共 ${Math.ceil(tradesData.length / itemsPerPage)} 页`;
+            const totalPages = Math.max(1, Math.ceil(tradesData.length / itemsPerPage));
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} / ${totalPages}`;
             document.getElementById('prevBtn').disabled = currentPage === 1;
             document.getElementById('nextBtn').disabled = end >= tradesData.length;
         }
@@ -703,9 +739,29 @@
             const symbol = document.getElementById('filterSymbol').value;
             const side = document.getElementById('filterSide').value;
             const status = document.getElementById('filterStatus').value;
-            
-            // 这里可以实现筛选逻辑
+            const filterDate = document.getElementById('filterDate').value;
+
+            tradesData = allTradesData.filter(trade => {
+                if (symbol) {
+                    const selected = normalizeSymbol(symbol);
+                    const current = normalizeSymbol(trade.symbol);
+                    if (selected !== current) return false;
+                }
+                if (side && trade.action !== side) return false;
+                if (status && trade.status !== status) return false;
+                if (filterDate) {
+                    const tradeDate = new Date(trade.timestamp);
+                    const y = tradeDate.getFullYear();
+                    const m = String(tradeDate.getMonth() + 1).padStart(2, '0');
+                    const d = String(tradeDate.getDate()).padStart(2, '0');
+                    if (`${y}-${m}-${d}` !== filterDate) return false;
+                }
+                return true;
+            });
+
             currentPage = 1;
+            updateStats();
+            renderEquityCurve();
             renderTable();
         }
 
@@ -714,11 +770,13 @@
             document.getElementById('filterSide').value = '';
             document.getElementById('filterStatus').value = '';
             document.getElementById('filterDate').value = '';
+            tradesData = [...allTradesData];
             currentPage = 1;
+            updateStats();
+            renderEquityCurve();
             renderTable();
         }
 
-        // 心跳机制
         let heartbeatInterval = null;
         let lastHeartbeatResponse = Date.now();
         
