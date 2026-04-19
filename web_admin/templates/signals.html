@@ -562,6 +562,49 @@
             </div>
         </div>
 
+        <div class="card">
+            <h3>🧩 运行时策略参数</h3>
+            <div class="form-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+                <div class="form-group">
+                    <label>策略Key</label>
+                    <input id="runtimeStrategyKey" type="text" value="MA99_MTF_MAIN" style="width:100%;padding:10px;background:#0d1117;border:1px solid #2d3748;border-radius:8px;color:#e0e0e0;">
+                </div>
+                <div class="form-group">
+                    <label>策略名</label>
+                    <input id="runtimeStrategyName" type="text" value="MA99_MTF" style="width:100%;padding:10px;background:#0d1117;border:1px solid #2d3748;border-radius:8px;color:#e0e0e0;">
+                </div>
+                <div class="form-group">
+                    <label>币种</label>
+                    <input id="runtimeSymbol" type="text" value="BTCUSDT" style="width:100%;padding:10px;background:#0d1117;border:1px solid #2d3748;border-radius:8px;color:#e0e0e0;">
+                </div>
+                <div class="form-group">
+                    <label>周期</label>
+                    <select id="runtimeInterval" style="width:100%;padding:10px;background:#0d1117;border:1px solid #2d3748;border-radius:8px;color:#e0e0e0;">
+                        <option value="1m">1m</option><option value="3m">3m</option><option value="5m" selected>5m</option>
+                        <option value="15m">15m</option><option value="30m">30m</option><option value="1h">1h</option>
+                        <option value="2h">2h</option><option value="4h">4h</option><option value="6h">6h</option>
+                        <option value="12h">12h</option><option value="1d">1d</option><option value="1w">1w</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>AI模型</label>
+                    <select id="runtimeAiModel" style="width:100%;padding:10px;background:#0d1117;border:1px solid #2d3748;border-radius:8px;color:#e0e0e0;"></select>
+                </div>
+                <div class="form-group" style="display:flex;align-items:flex-end;gap:14px;">
+                    <label><input id="runtimeAiEnabled" type="checkbox" checked> AI启用</label>
+                    <label><input id="runtimeTelegram" type="checkbox" checked> Telegram</label>
+                    <label><input id="runtimeFollowGlobal" type="checkbox" checked> 跟随全局开关</label>
+                </div>
+            </div>
+            <div style="margin-top: 12px;">
+                <button class="btn btn-primary" onclick="saveRuntimeStrategyConfig()">保存运行时配置</button>
+                <button class="btn btn-primary" onclick="loadRuntimeStrategyConfig()">刷新配置</button>
+                <button class="btn btn-primary" onclick="setRuntimeStrategyStatus('running')">标记运行</button>
+                <button class="btn btn-primary" onclick="setRuntimeStrategyStatus('stopped')">标记停止</button>
+                <span id="runtimeConfigStatus" style="margin-left: 10px; color:#a0aec0;"></span>
+            </div>
+        </div>
+
         <!-- 策略运行状态 -->
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -1467,6 +1510,100 @@
             }
         });
 
+        async function loadAiModelOptions() {
+            const select = document.getElementById('runtimeAiModel');
+            if (!select) return;
+            try {
+                const res = await fetch('/api/ai/models');
+                const payload = await res.json();
+                const items = payload.success ? (payload.data || []) : [];
+                const options = [`<option value="">不使用AI</option>`];
+                items.forEach(item => {
+                    const selectable = item.selectable === true;
+                    const disabledAttr = selectable ? '' : 'disabled';
+                    const mark = selectable ? '' : ' (未配置/禁用)';
+                    options.push(`<option value="${item.provider_key}" ${disabledAttr}>${item.label}${mark}</option>`);
+                });
+                select.innerHTML = options.join('');
+            } catch (e) {
+                console.warn('加载AI模型列表失败:', e);
+            }
+        }
+
+        async function loadRuntimeStrategyConfig() {
+            const key = (document.getElementById('runtimeStrategyKey') || {}).value || 'MA99_MTF_MAIN';
+            const statusEl = document.getElementById('runtimeConfigStatus');
+            try {
+                const res = await fetch(`/api/strategies/configs/${encodeURIComponent(key)}`);
+                const payload = await res.json();
+                if (!payload.success) {
+                    if (statusEl) statusEl.textContent = `未找到配置: ${key}`;
+                    return;
+                }
+                const d = payload.data || {};
+                document.getElementById('runtimeStrategyName').value = d.strategy_name || 'MA99_MTF';
+                document.getElementById('runtimeSymbol').value = d.symbol || 'BTCUSDT';
+                document.getElementById('runtimeInterval').value = d.interval || '5m';
+                document.getElementById('runtimeAiEnabled').checked = !!d.ai_enabled;
+                document.getElementById('runtimeTelegram').checked = !!d.telegram_notify;
+                document.getElementById('runtimeFollowGlobal').checked = !!d.auto_trade_follow_global;
+                if (d.ai_model) document.getElementById('runtimeAiModel').value = d.ai_model;
+                if (statusEl) statusEl.textContent = `已加载: ${key}`;
+            } catch (e) {
+                if (statusEl) statusEl.textContent = `加载失败: ${e.message}`;
+            }
+        }
+
+        async function saveRuntimeStrategyConfig() {
+            const statusEl = document.getElementById('runtimeConfigStatus');
+            const body = {
+                strategy_key: document.getElementById('runtimeStrategyKey').value.trim(),
+                strategy_name: document.getElementById('runtimeStrategyName').value.trim() || 'MA99_MTF',
+                symbol: document.getElementById('runtimeSymbol').value.trim().toUpperCase().replace('/', ''),
+                interval: document.getElementById('runtimeInterval').value,
+                ai_enabled: document.getElementById('runtimeAiEnabled').checked,
+                ai_model: document.getElementById('runtimeAiModel').value,
+                telegram_notify: document.getElementById('runtimeTelegram').checked,
+                auto_trade_follow_global: document.getElementById('runtimeFollowGlobal').checked,
+                status: 'stopped'
+            };
+            if (!body.strategy_key || !body.symbol) {
+                if (statusEl) statusEl.textContent = 'strategy_key 和 symbol 必填';
+                return;
+            }
+            try {
+                const res = await fetch('/api/strategies/configs', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+                const payload = await res.json();
+                if (statusEl) statusEl.textContent = payload.success ? '保存成功' : `保存失败: ${payload.error || ''}`;
+            } catch (e) {
+                if (statusEl) statusEl.textContent = `保存失败: ${e.message}`;
+            }
+        }
+
+        async function setRuntimeStrategyStatus(status) {
+            const key = document.getElementById('runtimeStrategyKey').value.trim();
+            const statusEl = document.getElementById('runtimeConfigStatus');
+            if (!key) {
+                if (statusEl) statusEl.textContent = '请先填写策略Key';
+                return;
+            }
+            try {
+                const res = await fetch(`/api/strategies/configs/${encodeURIComponent(key)}/status`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({status})
+                });
+                const payload = await res.json();
+                if (statusEl) statusEl.textContent = payload.success ? `状态已更新为 ${status}` : `更新失败: ${payload.error || ''}`;
+            } catch (e) {
+                if (statusEl) statusEl.textContent = `更新失败: ${e.message}`;
+            }
+        }
+
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             console.log('[Signal Monitor] v2.0 Initializing...');
@@ -1475,6 +1612,7 @@
             loadStrategyConfig();
             loadStrategyStatus();
             loadSignalLogs();
+            loadAiModelOptions().then(loadRuntimeStrategyConfig);
             startHeartbeat();
             console.log('[Signal Monitor] Initialization complete');
             

@@ -109,9 +109,11 @@ class OrderExecutor:
         conn.close()
         logger.info("✅ 数据库初始化完成")
     
-    def execute_signal(self, symbol: str, timeframe: str, action: str, 
+    def execute_signal(self, symbol: str, timeframe: str, action: str,
                        price: float, rsi: float = 50, confidence: float = 1.0,
-                       strategy: str = 'MA99_MTF') -> bool:
+                       strategy: str = 'MA99_MTF', ai_model: str = '',
+                       ai_decision: str = 'EXECUTE', signal_source: str = 'strategy_signal',
+                       signal_reason: str = '') -> bool:
         """
         执行交易信号
         
@@ -182,8 +184,20 @@ class OrderExecutor:
             logger.info(f"持仓记录: {symbol} {action} 数量{amount} 止损{stop_loss} 止盈{take_profit}")
             
             # 记录交易
-            self._record_trade(symbol, action, amount, price, order['order_id'], 
-                             timeframe, rsi)
+            self._record_trade(
+                symbol,
+                action,
+                amount,
+                price,
+                order['order_id'],
+                timeframe,
+                rsi,
+                strategy_name=strategy,
+                ai_model=ai_model,
+                ai_decision=ai_decision,
+                signal_source=signal_source,
+                signal_reason=signal_reason
+            )
             self._record_signal(symbol, timeframe, action, price, rsi, 
                               executed=True, order_id=order['order_id'])
             
@@ -195,9 +209,11 @@ class OrderExecutor:
             logger.error("订单执行失败")
             return False
     
-    def _record_trade(self, symbol: str, action: str, amount: float, 
+    def _record_trade(self, symbol: str, action: str, amount: float,
                      price: float, order_id: str, timeframe: str, rsi: float,
-                     pnl: float = None, notes: str = None):
+                     pnl: float = None, notes: str = None, strategy_name: str = 'MA99_MTF',
+                     ai_model: str = '', ai_decision: str = 'EXECUTE',
+                     signal_source: str = 'strategy_signal', signal_reason: str = ''):
         """记录交易到数据库（线程安全）"""
         with self._db_lock:
             conn = None
@@ -218,7 +234,7 @@ class OrderExecutor:
                     price,
                     order_id,
                     'filled',
-                    'MA99_MTF',
+                    strategy_name or 'MA99_MTF',
                     timeframe,
                     rsi,
                     pnl,
@@ -236,6 +252,11 @@ class OrderExecutor:
                     timeframe=timeframe,
                     pnl=pnl,
                     notes=notes,
+                    strategy_name=strategy_name,
+                    ai_model=ai_model,
+                    ai_decision=ai_decision,
+                    signal_source=signal_source,
+                    signal_reason=signal_reason,
                 )
             except Exception as e:
                 logger.error(f"记录交易失败: {e}")
@@ -251,7 +272,12 @@ class OrderExecutor:
         order_id: str,
         timeframe: str,
         pnl: float = None,
-        notes: str = None
+        notes: str = None,
+        strategy_name: str = 'MA99_MTF',
+        ai_model: str = '',
+        ai_decision: str = 'EXECUTE',
+        signal_source: str = 'strategy_signal',
+        signal_reason: str = ''
     ):
         """Write normalized execution events into trade_fills."""
         try:
@@ -266,7 +292,7 @@ class OrderExecutor:
             note_str = notes or ""
 
             action_type = "open"
-            signal_source = "strategy_signal"
+            final_signal_source = signal_source or "strategy_signal"
             if pnl is not None:
                 if order_id_str.startswith("tp_sl_"):
                     reason = order_id_str.replace("tp_sl_", "").upper()
@@ -276,19 +302,21 @@ class OrderExecutor:
                         action_type = "stop_loss"
                     else:
                         action_type = "close"
-                    signal_source = "risk_manager"
+                    final_signal_source = "risk_manager"
                 elif order_id_str.startswith("manual_"):
                     action_type = "manual_close"
-                    signal_source = "manual"
+                    final_signal_source = "manual"
                 else:
                     action_type = "close"
 
-            strategy_name = "MA99_MTF"
-            if timeframe and timeframe not in {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}:
-                strategy_name = timeframe
+            final_strategy_name = (strategy_name or '').strip() or "MA99_MTF"
+            final_ai_decision = (ai_decision or "EXECUTE").strip().upper()
+            if final_ai_decision not in {"EXECUTE", "SKIP", "REDUCE"}:
+                final_ai_decision = "EXECUTE"
+            final_signal_reason = (signal_reason or note_str or '').strip()
 
             self.trade_fill_repo.create_fill({
-                "strategy_name": strategy_name,
+                "strategy_name": final_strategy_name,
                 "symbol": (symbol or "").replace("/", "").upper(),
                 "side": side,
                 "position_side": position_side,
@@ -300,10 +328,10 @@ class OrderExecutor:
                 "realized_pnl": float(pnl or 0),
                 "fee": 0,
                 "fee_asset": "",
-                "ai_model": "",
-                "ai_decision": "EXECUTE",
-                "signal_source": signal_source,
-                "signal_reason": note_str,
+                "ai_model": (ai_model or "").strip(),
+                "ai_decision": final_ai_decision,
+                "signal_source": final_signal_source,
+                "signal_reason": final_signal_reason,
             })
         except Exception as e:
             logger.warning(f"Trade fill write skipped: {e}")

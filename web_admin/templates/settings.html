@@ -256,6 +256,42 @@
         .danger-zone h3 {
             color: #f56565;
         }
+
+        .provider-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+        }
+
+        .provider-card {
+            background: #0d1117;
+            border: 1px solid #2d3748;
+            border-radius: 10px;
+            padding: 15px;
+        }
+
+        .provider-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .provider-title strong {
+            color: #4fd1c5;
+        }
+
+        .provider-status {
+            font-size: 12px;
+            color: #a0aec0;
+        }
+
+        .provider-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
     </style>
 </head>
 <body>
@@ -336,6 +372,12 @@
                     <input type="password" id="kimiApiKey" placeholder="sk-...">
                 </div>
             </div>
+        </div>
+
+        <div class="card">
+            <h3>🧩 模型提供商管理</h3>
+            <p class="info-text" style="margin-bottom: 12px;">可单独管理每个模型的 Key / Base URL / Model Name，并支持测试与禁用。</p>
+            <div id="providerGrid" class="provider-grid"></div>
         </div>
 
         <div class="card">
@@ -521,9 +563,115 @@
                     setElementValue('kimiApiKey', settings.kimi_api_key || '');
                     setElementValue('deepseekApiKey', settings.deepseek_api_key || '');
                 }
+                await loadProviderCards();
             } catch (e) {
                 console.error('加载设置失败:', e);
                 showAlert('加载设置失败: ' + e.message, 'error');
+            }
+        }
+
+        async function loadProviderCards() {
+            const container = document.getElementById('providerGrid');
+            if (!container) return;
+            try {
+                const response = await fetch('/api/ai/models');
+                const payload = await response.json();
+                if (!payload.success) {
+                    container.innerHTML = '<div class="info-text">加载模型列表失败</div>';
+                    return;
+                }
+                const items = payload.data || [];
+                container.innerHTML = items.map(item => `
+                    <div class="provider-card">
+                        <div class="provider-title">
+                            <strong>${item.label}</strong>
+                            <span class="provider-status">${item.selectable ? '可用' : (item.configured ? '已配置/禁用' : '未配置')}</span>
+                        </div>
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <input type="password" id="provider_key_${item.provider_key}" placeholder="输入 API Key">
+                        </div>
+                        <div class="form-group">
+                            <label>Base URL</label>
+                            <input type="text" id="provider_url_${item.provider_key}" value="${item.base_url || ''}" placeholder="可选">
+                        </div>
+                        <div class="form-group">
+                            <label>Model Name</label>
+                            <input type="text" id="provider_model_${item.provider_key}" value="${item.model_name || ''}" placeholder="可选">
+                        </div>
+                        <div class="provider-actions">
+                            <button class="btn btn-primary" onclick="saveProvider('${item.provider_key}')">保存</button>
+                            <button class="btn btn-secondary" onclick="testProvider('${item.provider_key}')">测试</button>
+                            <button class="btn btn-danger" onclick="disableProvider('${item.provider_key}')">禁用</button>
+                        </div>
+                    </div>
+                `).join('');
+
+                for (const item of items) {
+                    try {
+                        const detailResp = await fetch(`/api/ai/providers/${item.provider_key}`);
+                        const detailPayload = await detailResp.json();
+                        if (detailPayload.success) {
+                            const d = detailPayload.data || {};
+                            setElementValue(`provider_key_${item.provider_key}`, d.api_key || '');
+                            setElementValue(`provider_url_${item.provider_key}`, d.base_url || '');
+                            setElementValue(`provider_model_${item.provider_key}`, d.model_name || '');
+                        }
+                    } catch (_) {}
+                }
+            } catch (e) {
+                container.innerHTML = `<div class="info-text">加载失败: ${e.message}</div>`;
+            }
+        }
+
+        async function saveProvider(providerKey) {
+            const api_key = (document.getElementById(`provider_key_${providerKey}`)?.value || '').trim();
+            const base_url = (document.getElementById(`provider_url_${providerKey}`)?.value || '').trim();
+            const model_name = (document.getElementById(`provider_model_${providerKey}`)?.value || '').trim();
+            try {
+                const response = await fetch(`/api/ai/providers/${providerKey}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({api_key, base_url, model_name, is_enabled: !!api_key})
+                });
+                const payload = await response.json();
+                if (payload.success) {
+                    showAlert(`${providerKey} 保存成功`, 'success');
+                    await loadProviderCards();
+                } else {
+                    showAlert(`${providerKey} 保存失败: ${payload.error || ''}`, 'error');
+                }
+            } catch (e) {
+                showAlert(`${providerKey} 保存失败: ${e.message}`, 'error');
+            }
+        }
+
+        async function testProvider(providerKey) {
+            try {
+                const response = await fetch(`/api/ai/providers/${providerKey}/test`, {method: 'POST'});
+                const payload = await response.json();
+                if (payload.success) {
+                    showAlert(`${providerKey} 测试成功`, 'success');
+                } else {
+                    showAlert(`${providerKey} 测试失败: ${payload.error || ''}`, 'error');
+                }
+            } catch (e) {
+                showAlert(`${providerKey} 测试异常: ${e.message}`, 'error');
+            }
+        }
+
+        async function disableProvider(providerKey) {
+            try {
+                const response = await fetch(`/api/ai/providers/${providerKey}/disable`, {method: 'POST'});
+                const payload = await response.json();
+                if (payload.success) {
+                    showAlert(`${providerKey} 已禁用`, 'success');
+                    await loadProviderCards();
+                } else {
+                    showAlert(`${providerKey} 禁用失败: ${payload.error || ''}`, 'error');
+                }
+            } catch (e) {
+                showAlert(`${providerKey} 禁用失败: ${e.message}`, 'error');
             }
         }
 

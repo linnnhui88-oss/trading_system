@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -7,11 +7,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flask import Flask, render_template, jsonify, request
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import logging
-from threading import Thread
+from threading import Thread, Lock
 import time
 import json
+import sqlite3
 
 from trading_core.exchange_client import get_exchange_client
 from trading_core.risk_manager import get_risk_manager
@@ -19,6 +20,10 @@ from trading_core.order_executor import get_order_executor
 from trading_core.strategy_engine_adapter import get_strategy_manager, StrategyConfig
 from trading_core.ai_model_registry import get_all_ai_models
 from trading_core.ai_provider_config_manager import AIProviderConfigManager
+from trading_core.market_data_service import MarketDataService
+from trading_core.trade_fill_repository import TradeFillRepository
+from trading_core.llm_service import LLMService
+from trading_core.strategy_config_repository import StrategyConfigRepository
 
 # 配置日志
 log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
@@ -50,6 +55,24 @@ _strategy_manager = None
 
 # AI配置管理器（独立初始化，不影响交易系统）
 _ai_config_manager = None
+_market_data_service = None
+_trade_fill_repository = None
+_strategy_config_repo = None
+_market_subscriptions = {}
+_market_subscriptions_lock = Lock()
+
+AI_PROVIDER_FIELD_MAP = {
+    'gpt_api_key': 'gpt',
+    'gemini_api_key': 'gemini',
+    'claude_api_key': 'claude',
+    'qwen_api_key': 'qwen',
+    'kimi_api_key': 'kimi',
+    'deepseek_api_key': 'deepseek',
+}
+
+def normalize_symbol(symbol: str, default: str = 'BTCUSDT') -> str:
+    normalized = (symbol or '').strip().upper().replace('/', '')
+    return normalized or default
 
 def get_ai_config_manager():
     """延迟获取AI配置管理器"""
@@ -60,6 +83,36 @@ def get_ai_config_manager():
         logger.info('[AI] AIProviderConfigManager initialized')
     
     return _ai_config_manager
+
+def get_market_data_service():
+    """延迟获取市场行情服务"""
+    global _market_data_service
+
+    if _market_data_service is None:
+        _market_data_service = MarketDataService()
+        logger.info('[Market] MarketDataService initialized')
+
+    return _market_data_service
+
+def get_trade_fill_repository():
+    """延迟获取成交明细仓储"""
+    global _trade_fill_repository
+
+    if _trade_fill_repository is None:
+        _trade_fill_repository = TradeFillRepository()
+        logger.info('[TradeFill] TradeFillRepository initialized')
+
+    return _trade_fill_repository
+
+def get_strategy_config_repo():
+    """延迟获取策略配置仓储"""
+    global _strategy_config_repo
+
+    if _strategy_config_repo is None:
+        _strategy_config_repo = StrategyConfigRepository()
+        logger.info('[StrategyConfig] StrategyConfigRepository initialized')
+
+    return _strategy_config_repo
 
 def get_components():
     """延迟获取核心组件"""
@@ -221,6 +274,153 @@ def api_signals():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/market/symbols', methods=['GET'])
+def api_market_symbols():
+    """获取可交易币种列表"""
+    try:
+        market_service = get_market_data_service()
+        quote_asset = request.args.get('quote_asset', 'USDT')
+        only_trading = request.args.get('only_trading', 'true').lower() != 'false'
+        result = market_service.get_symbols(quote_asset=quote_asset, only_trading=only_trading)
+
+        if result.get('success'):
+            return jsonify({'success': True, 'data': result.get('data', [])})
+        return jsonify({'success': False, 'error': result.get('message', '获取币种失败')})
+    except Exception as e:
+        logger.error(f"获取市场币种失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/market/ticker', methods=['GET'])
+def api_market_ticker():
+    """获取单个币种ticker快照"""
+    try:
+        symbol = normalize_symbol(request.args.get('symbol'), default='BTCUSDT')
+        market_service = get_market_data_service()
+        result = market_service.get_ticker(symbol)
+
+        if result.get('success'):
+            return jsonify({'success': True, 'data': result.get('data', {})})
+        return jsonify({'success': False, 'error': result.get('message', '获取ticker失败')})
+    except Exception as e:
+        logger.error(f"获取ticker失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/market/klines', methods=['GET'])
+def api_market_klines():
+    """获取K线数据"""
+    try:
+        symbol = normalize_symbol(request.args.get('symbol'), default='BTCUSDT')
+        interval = (request.args.get('interval') or '5m').strip()
+        limit = request.args.get('limit', 200, type=int)
+
+        market_service = get_market_data_service()
+        result = market_service.get_klines(symbol=symbol, interval=interval, limit=limit)
+
+        if result.get('success'):
+            return jsonify({'success': True, 'data': result.get('data', {})})
+        return jsonify({'success': False, 'error': result.get('message', '获取K线失败')})
+    except Exception as e:
+        logger.error(f"获取K线失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/market/depth', methods=['GET'])
+def api_market_depth():
+    """获取买卖盘深度"""
+    try:
+        symbol = normalize_symbol(request.args.get('symbol'), default='BTCUSDT')
+        limit = request.args.get('limit', 5, type=int)
+
+        market_service = get_market_data_service()
+        result = market_service.get_depth(symbol=symbol, limit=limit)
+
+        if result.get('success'):
+            return jsonify({'success': True, 'data': result.get('data', {})})
+        return jsonify({'success': False, 'error': result.get('message', '获取深度失败')})
+    except Exception as e:
+        logger.error(f"获取深度失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/market/snapshot', methods=['GET'])
+def api_market_snapshot():
+    """获取仪表盘行情快照（ticker + klines + depth）"""
+    try:
+        symbol = normalize_symbol(request.args.get('symbol'), default='BTCUSDT')
+        interval = (request.args.get('interval') or '5m').strip()
+        kline_limit = request.args.get('kline_limit', 200, type=int)
+        depth_limit = request.args.get('depth_limit', 5, type=int)
+
+        market_service = get_market_data_service()
+        result = market_service.get_dashboard_snapshot(
+            symbol=symbol,
+            interval=interval,
+            kline_limit=kline_limit,
+            depth_limit=depth_limit
+        )
+
+        if result.get('success'):
+            return jsonify({'success': True, 'data': result.get('data', {})})
+        return jsonify({'success': False, 'error': result.get('message', '获取行情快照失败')})
+    except Exception as e:
+        logger.error(f"获取行情快照失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/trades/fills', methods=['GET'])
+def api_trade_fills():
+    """获取成交明细（支持分页/筛选）"""
+    try:
+        repo = get_trade_fill_repository()
+
+        symbol = (request.args.get('symbol') or '').strip().upper().replace('/', '')
+        strategy_name = (request.args.get('strategy_name') or '').strip()
+        action_type = (request.args.get('action_type') or '').strip().lower()
+        start_time = (request.args.get('start_time') or '').strip()
+        end_time = (request.args.get('end_time') or '').strip()
+
+        page = max(1, request.args.get('page', 1, type=int))
+        page_size = max(1, min(500, request.args.get('page_size', 20, type=int)))
+        offset = (page - 1) * page_size
+
+        items = repo.list_fills(
+            symbol=symbol,
+            strategy_name=strategy_name,
+            action_type=action_type,
+            start_time=start_time,
+            end_time=end_time,
+            limit=page_size,
+            offset=offset
+        )
+        total = repo.count_fills(
+            symbol=symbol,
+            strategy_name=strategy_name,
+            action_type=action_type,
+            start_time=start_time,
+            end_time=end_time
+        )
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'items': items,
+                'page': page,
+                'page_size': page_size,
+                'total': total,
+                'total_pages': (total + page_size - 1) // page_size
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取成交明细失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/trades/fills/summary', methods=['GET'])
+def api_trade_fills_summary():
+    """获取成交明细汇总"""
+    try:
+        repo = get_trade_fill_repository()
+        return jsonify({'success': True, 'data': repo.get_summary()})
+    except Exception as e:
+        logger.error(f"获取成交汇总失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 
 # 信号日志文件路径（与 StrategyLogger 一致）
 SIGNAL_LOG_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'trade_signals.json')
@@ -324,11 +524,17 @@ def close_position():
         
         if not symbol:
             return jsonify({'success': False, 'error': '缺少symbol参数'})
-        
-        success = exchange.close_position(symbol)
+
+        result = order_executor.close_position_manual(symbol)
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': f'{symbol} 平仓成功',
+                'data': result
+            })
         return jsonify({
-            'success': success,
-            'message': f'{symbol} 平仓成功' if success else f'{symbol} 平仓失败'
+            'success': False,
+            'error': result.get('error', f'{symbol} 平仓失败')
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -338,10 +544,17 @@ def close_all_positions():
     """平掉所有持仓"""
     try:
         exchange, risk_manager, order_executor, strategy_manager = get_components()
-        success = exchange.close_all_positions()
+        result = order_executor.close_all_positions_manual()
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': f'已平仓 {result.get("closed_count", 0)} 个持仓',
+                'data': result
+            })
         return jsonify({
-            'success': success,
-            'message': '所有持仓已平仓' if success else '部分持仓平仓失败'
+            'success': False,
+            'error': result.get('error', '部分持仓平仓失败'),
+            'data': result
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -403,6 +616,52 @@ def api_save_ai_provider(provider_key):
         logger.error(f"保存AI模型配置失败: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/ai/providers/<provider_key>/disable', methods=['POST'])
+def api_disable_ai_provider(provider_key):
+    """禁用指定AI模型"""
+    try:
+        manager = get_ai_config_manager()
+        disabled = manager.disable_provider(provider_key)
+        return jsonify({
+            'success': True,
+            'message': f'{provider_key} 已禁用',
+            'data': disabled
+        })
+    except Exception as e:
+        logger.error(f"禁用AI模型失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/ai/providers/<provider_key>/test', methods=['POST'])
+def api_test_ai_provider(provider_key):
+    """测试指定AI模型连通性"""
+    try:
+        llm_service = LLMService()
+        payload = {
+            'symbol': 'BTCUSDT',
+            'interval': '5m',
+            'signal': 'BUY',
+            'strategy_name': 'API_CONNECTIVITY_TEST',
+            'price': 100000.0,
+            'indicators': {'rsi': 50.0},
+            'risk_context': {'global_auto_trading': False}
+        }
+
+        result = llm_service.analyze_trade(provider_key, payload)
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': f'{provider_key} 连接测试成功',
+                'data': result
+            })
+        return jsonify({
+            'success': False,
+            'error': result.get('reason') or result.get('error') or '模型测试失败',
+            'data': result
+        })
+    except Exception as e:
+        logger.error(f"测试AI模型失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 # ==================== WebSocket ====================
 
 @app.route('/api/ohlcv')
@@ -455,7 +714,6 @@ def get_settings():
             'binance_secret_key': '',  # 不返回secret
             'telegram_bot_token': os.getenv('TELEGRAM_BOT_TOKEN', ''),
             'telegram_chat_id': os.getenv('TELEGRAM_CHAT_ID', ''),
-            'gemini_api_key': os.getenv('GEMINI_API_KEY', ''),
             # 邮件配置（从环境变量读取）
             'email_enabled': os.getenv('EMAIL_ENABLED', 'false').lower() == 'true',
             'email_host': os.getenv('EMAIL_HOST', 'smtp.gmail.com'),
@@ -472,6 +730,13 @@ def get_settings():
             'trailing_stop_percent': risk_manager.trailing_stop_percent,
             'max_positions_count': risk_manager.max_positions_count,
         }
+
+        # 从 ai_provider_configs 回显多模型 API Key
+        ai_manager = get_ai_config_manager()
+        for field, provider_key in AI_PROVIDER_FIELD_MAP.items():
+            provider_config = ai_manager.get_provider_config(provider_key) or {}
+            settings[field] = provider_config.get('api_key', '')
+
         return jsonify({'success': True, 'data': settings})
     except Exception as e:
         logger.error(f"获取设置失败: {e}")
@@ -582,6 +847,19 @@ def save_settings():
                 os.environ['TELEGRAM_BOT_TOKEN'] = data['telegram_token']
             if data.get('telegram_chat_id'):
                 os.environ['TELEGRAM_CHAT_ID'] = data['telegram_chat_id']
+
+            # 同步保存 AI provider 配置
+            ai_manager = get_ai_config_manager()
+            for field, provider_key in AI_PROVIDER_FIELD_MAP.items():
+                api_key = (data.get(field) or '').strip()
+                current = ai_manager.get_provider_config(provider_key) or {}
+                ai_manager.save_provider_config(
+                    provider_key=provider_key,
+                    api_key=api_key,
+                    base_url=current.get('base_url', ''),
+                    model_name=current.get('model_name', ''),
+                    is_enabled=bool(api_key)
+                )
             
             logger.info("✅ 运行中组件和环境变量已更新")
         except Exception as e:
@@ -592,6 +870,74 @@ def save_settings():
         
     except Exception as e:
         logger.error(f"保存设置失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/reset_settings', methods=['POST'])
+def reset_settings():
+    """恢复默认配置并写回.env"""
+    default_settings = {
+        'max_position_usdt': 50,
+        'max_daily_loss_usdt': 30,
+        'default_leverage': 3,
+        'max_positions_count': 2,
+        'stop_loss_percent': 2,
+        'take_profit_percent': 4,
+        'trailing_stop_percent': 1.0,
+        'email_enabled': False,
+        'email_host': 'smtp.gmail.com',
+        'email_port': 587,
+        'email_user': '',
+        'email_to': '',
+        'web_port': int(os.getenv('WEB_PORT', 5000)),
+        'log_level': os.getenv('LOG_LEVEL', 'INFO'),
+        'default_strategy': 'MA99_MTF',
+        'use_consensus': False
+    }
+
+    with app.test_request_context(json=default_settings):
+        response = save_settings()
+        payload = response.get_json()
+        if payload and payload.get('success'):
+            payload['message'] = '已恢复默认设置'
+        return response
+
+@app.route('/api/clear_data', methods=['POST'])
+def clear_data():
+    """清理交易与信号数据（保留配置）"""
+    try:
+        # 1) 清理 order_executor 的本地历史库
+        trade_history_db = os.path.join(log_dir, 'trade_history.db')
+        if os.path.exists(trade_history_db):
+            conn = sqlite3.connect(trade_history_db)
+            cur = conn.cursor()
+            cur.execute("DELETE FROM trades")
+            cur.execute("DELETE FROM signals")
+            conn.commit()
+            conn.close()
+
+        # 2) 清理统一业务库中的成交明细
+        main_db = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'trading_system.db')
+        if os.path.exists(main_db):
+            conn = sqlite3.connect(main_db)
+            cur = conn.cursor()
+            cur.execute("DELETE FROM trade_fills")
+            conn.commit()
+            conn.close()
+
+        # 3) 删除信号日志文件
+        for file_path in [
+            os.path.join(log_dir, 'trade_signals.json'),
+            os.path.join(log_dir, 'signals_history.jsonl')
+        ]:
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    pass
+
+        return jsonify({'success': True, 'message': '交易数据已清除'})
+    except Exception as e:
+        logger.error(f"清除交易数据失败: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 # ==================== 策略AI配置API ====================
@@ -660,11 +1006,138 @@ def get_strategy_ai_config(strategy_key):
         logger.error(f"获取策略AI配置失败: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/strategies/configs', methods=['GET'])
+def list_strategy_runtime_configs():
+    """列出策略运行配置（strategy_configs 表）"""
+    try:
+        repo = get_strategy_config_repo()
+        status = (request.args.get('status') or '').strip().lower()
+        configs = repo.list_strategy_configs(status=status)
+        return jsonify({'success': True, 'data': configs})
+    except Exception as e:
+        logger.error(f"获取策略配置列表失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/strategies/configs/<strategy_key>', methods=['GET'])
+def get_strategy_runtime_config(strategy_key):
+    """获取单个策略运行配置"""
+    try:
+        repo = get_strategy_config_repo()
+        config = repo.get_strategy_config(strategy_key)
+        if not config:
+            return jsonify({'success': False, 'error': f'未找到策略配置: {strategy_key}'})
+        return jsonify({'success': True, 'data': config})
+    except Exception as e:
+        logger.error(f"获取策略配置失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/strategies/configs', methods=['POST'])
+def upsert_strategy_runtime_config():
+    """新增/更新策略运行配置"""
+    try:
+        data = request.get_json() or {}
+        repo = get_strategy_config_repo()
+
+        strategy_key = (data.get('strategy_key') or '').strip()
+        strategy_name = (data.get('strategy_name') or strategy_key or '').strip()
+        symbol = (data.get('symbol') or '').strip().upper().replace('/', '')
+        interval = (data.get('interval') or '5m').strip()
+        ai_enabled = bool(data.get('ai_enabled', True))
+        ai_model = (data.get('ai_model') or '').strip()
+        telegram_notify = bool(data.get('telegram_notify', True))
+        auto_trade_follow_global = bool(data.get('auto_trade_follow_global', True))
+        status = (data.get('status') or 'stopped').strip().lower()
+        config_json = data.get('config_json') or ''
+
+        if not strategy_key:
+            return jsonify({'success': False, 'error': 'strategy_key不能为空'})
+        if not symbol:
+            return jsonify({'success': False, 'error': 'symbol不能为空'})
+
+        saved = repo.upsert_strategy_config(
+            strategy_key=strategy_key,
+            strategy_name=strategy_name,
+            symbol=symbol,
+            interval=interval,
+            ai_enabled=ai_enabled,
+            ai_model=ai_model,
+            telegram_notify=telegram_notify,
+            auto_trade_follow_global=auto_trade_follow_global,
+            status=status,
+            config_json=config_json
+        )
+        return jsonify({'success': True, 'message': '策略配置已保存', 'data': saved})
+    except Exception as e:
+        logger.error(f"保存策略配置失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/strategies/configs/<strategy_key>/status', methods=['POST'])
+def update_strategy_runtime_status(strategy_key):
+    """更新策略运行状态（running/stopped/paused）"""
+    try:
+        data = request.get_json() or {}
+        status = (data.get('status') or '').strip().lower()
+        if status not in {'running', 'stopped', 'paused'}:
+            return jsonify({'success': False, 'error': 'status必须是 running/stopped/paused'})
+
+        repo = get_strategy_config_repo()
+        updated = repo.update_status(strategy_key, status)
+        if not updated:
+            return jsonify({'success': False, 'error': f'未找到策略配置: {strategy_key}'})
+        return jsonify({'success': True, 'message': '策略状态已更新', 'data': updated})
+    except Exception as e:
+        logger.error(f"更新策略状态失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @socketio.on('connect')
 def handle_connect():
     """客户端连接"""
     logger.info('客户端已连接')
     emit('connected', {'data': 'Connected to trading server'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """客户端断开，清理行情订阅"""
+    sid = request.sid
+    with _market_subscriptions_lock:
+        sub = _market_subscriptions.pop(sid, None)
+    if sub:
+        room = f"market:{sub.get('symbol')}:{sub.get('interval')}"
+        try:
+            leave_room(room)
+        except Exception:
+            pass
+
+@socketio.on('subscribe_market')
+def handle_subscribe_market(data):
+    """订阅行情推送（按币种+周期分房间）"""
+    sid = request.sid
+    symbol = normalize_symbol((data or {}).get('symbol'), default='BTCUSDT')
+    interval = ((data or {}).get('interval') or '5m').strip()
+    if interval not in get_market_data_service().get_supported_intervals():
+        interval = '5m'
+
+    with _market_subscriptions_lock:
+        old = _market_subscriptions.get(sid)
+        if old:
+            old_room = f"market:{old.get('symbol')}:{old.get('interval')}"
+            leave_room(old_room)
+        _market_subscriptions[sid] = {'symbol': symbol, 'interval': interval}
+
+    room = f"market:{symbol}:{interval}"
+    join_room(room)
+    emit('market_subscribed', {'symbol': symbol, 'interval': interval})
+
+@socketio.on('unsubscribe_market')
+def handle_unsubscribe_market():
+    """取消行情订阅"""
+    sid = request.sid
+    with _market_subscriptions_lock:
+        old = _market_subscriptions.pop(sid, None)
+    if old:
+        room = f"market:{old.get('symbol')}:{old.get('interval')}"
+        leave_room(room)
+    emit('market_unsubscribed', {'success': True})
 
 @socketio.on('heartbeat')
 def handle_heartbeat(data):
@@ -745,6 +1218,37 @@ def broadcast_signal_logs():
         except Exception as e:
             logger.error(f"广播信号日志失败: {e}")
             time.sleep(5)
+
+def broadcast_market_updates():
+    """后台线程：按订阅房间推送行情"""
+    while True:
+        try:
+            with _market_subscriptions_lock:
+                active_pairs = {(v.get('symbol'), v.get('interval')) for v in _market_subscriptions.values()}
+
+            if not active_pairs:
+                time.sleep(1)
+                continue
+
+            market_service = get_market_data_service()
+            for symbol, interval in active_pairs:
+                room = f"market:{symbol}:{interval}"
+                ticker = market_service.get_ticker(symbol)
+                depth = market_service.get_depth(symbol, limit=5)
+                payload = {
+                    'symbol': symbol,
+                    'interval': interval,
+                    'ticker': ticker.get('data') if ticker.get('success') else None,
+                    'depth': depth.get('data') if depth.get('success') else None,
+                    'last_kline': None,
+                    'timestamp': time.time()
+                }
+                socketio.emit('market_update', payload, room=room)
+
+            time.sleep(1)
+        except Exception as e:
+            logger.error(f"广播行情失败: {e}")
+            time.sleep(1.5)
 
 
 # ==================== 策略配置管理 ====================
@@ -841,6 +1345,7 @@ def get_strategies():
         status['monitored_symbols'] = SYMBOLS
         status['monitored_timeframes'] = TIMEFRAMES
         status['scan_interval'] = 60  # 扫描间隔（秒）
+        status['runtime_configs'] = get_strategy_config_repo().list_strategy_configs()
         
         return jsonify({'success': True, 'data': status})
     except Exception as e:
@@ -882,6 +1387,22 @@ def start_strategy_engine():
         
         if _strategy_manager is None:
             return jsonify({'success': False, 'error': '策略管理器初始化失败'})
+
+        repo = get_strategy_config_repo()
+        running_configs = repo.list_strategy_configs(status='running')
+        if not running_configs:
+            repo.seed_default_strategy_if_missing(
+                strategy_key='MA99_MTF_MAIN',
+                strategy_name='MA99_MTF',
+                symbol='BTCUSDT',
+                interval='5m',
+                ai_enabled=True,
+                ai_model='',
+                telegram_notify=True,
+                auto_trade_follow_global=True,
+                status='running'
+            )
+            logger.info('[API] 无运行时策略配置，已创建默认配置 MA99_MTF_MAIN')
         
         # 检查是否已在运行
         if _strategy_manager._running:
@@ -1045,6 +1566,10 @@ if __name__ == '__main__':
     # 启动信号日志广播线程
     log_thread = Thread(target=broadcast_signal_logs, daemon=True)
     log_thread.start()
+
+    # 启动行情广播线程
+    market_thread = Thread(target=broadcast_market_updates, daemon=True)
+    market_thread.start()
     
     # 启动策略自动启动线程
     auto_start_thread = Thread(target=auto_start_strategy, daemon=True)

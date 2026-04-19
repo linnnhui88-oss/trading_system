@@ -416,6 +416,8 @@ class StrategyEngineAdapter:
         ai_enabled = bool(runtime_cfg.get('ai_enabled', True))
         ai_model = (runtime_cfg.get('ai_model') or '').strip()
         telegram_notify = bool(runtime_cfg.get('telegram_notify', True))
+        auto_trade_follow_global = bool(runtime_cfg.get('auto_trade_follow_global', True))
+        strategy_name = runtime_cfg.get('strategy_name') or config.name
 
         # ??????????K?????
         try:
@@ -436,7 +438,7 @@ class StrategyEngineAdapter:
                     'symbol': symbol.replace('/', '').upper(),
                     'interval': timeframe,
                     'signal': 'BUY' if action == 'LONG' else 'SELL',
-                    'strategy_name': runtime_cfg.get('strategy_name') or config.name,
+                    'strategy_name': strategy_name,
                     'price': price,
                     'indicators': {'rsi': rsi},
                     'risk_context': {'global_auto_trading': bool(self.order_executor.auto_trading)}
@@ -471,8 +473,9 @@ class StrategyEngineAdapter:
         executed = False
         api_latency = 0
         should_execute_by_ai = ai_decision in {'EXECUTE', 'REDUCE'}
+        can_execute = self.order_executor.auto_trading if auto_trade_follow_global else True
 
-        if self.order_executor.auto_trading and should_execute_by_ai:
+        if can_execute and should_execute_by_ai:
             start_time = time.time()
             executed = self.order_executor.execute_signal(
                 symbol=symbol,
@@ -481,7 +484,11 @@ class StrategyEngineAdapter:
                 price=price,
                 rsi=rsi,
                 confidence=ai_confidence,
-                strategy=(runtime_cfg.get('strategy_name') or 'MA99_MTF')
+                strategy=strategy_name,
+                ai_model=ai_model,
+                ai_decision=ai_decision,
+                signal_source='strategy_signal',
+                signal_reason=ai_advice
             )
             api_latency = int((time.time() - start_time) * 1000)
 
@@ -503,7 +510,12 @@ class StrategyEngineAdapter:
             except Exception as e:
                 logger.error(f"????????: {e}")
         elif not executed and trace_id:
-            skip_reason = "ExecutionFailed" if should_execute_by_ai else "AIRejected"
+            if not should_execute_by_ai:
+                skip_reason = "AIRejected"
+            elif not can_execute and auto_trade_follow_global:
+                skip_reason = "GlobalAutoTradingOff"
+            else:
+                skip_reason = "ExecutionFailed"
             self.strategy_logger.log_skipped(
                 trace_id=trace_id,
                 symbol=symbol,
@@ -517,7 +529,7 @@ class StrategyEngineAdapter:
 
         signal_record = {
             'timestamp': datetime.now().isoformat(),
-            'strategy': config.name,
+            'strategy': strategy_name,
             'symbol': symbol,
             'timeframe': timeframe,
             'action': action,
@@ -526,7 +538,10 @@ class StrategyEngineAdapter:
             'executed': executed,
             'ai_advice': ai_advice,
             'ai_model': ai_model,
-            'ai_decision': ai_decision
+            'ai_decision': ai_decision,
+            'auto_trade_follow_global': auto_trade_follow_global,
+            'global_auto_trading': bool(self.order_executor.auto_trading),
+            'can_execute': can_execute
         }
         
         self.signal_history.append(signal_record)
