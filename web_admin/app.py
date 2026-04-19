@@ -421,6 +421,42 @@ def api_trade_fills_summary():
         logger.error(f"获取成交汇总失败: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/trades/sync', methods=['POST'])
+def api_sync_binance_trades():
+    """手动触发币安交易同步"""
+    try:
+        from scripts.binance_trade_sync import BinanceTradeSync
+        
+        data = request.get_json() or {}
+        hours = data.get('hours', 24)
+        symbols = data.get('symbols')
+        
+        sync = BinanceTradeSync()
+        result = sync.sync_trades(
+            symbols=symbols,
+            since_hours=hours
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': f'同步完成: 导入 {result["imported"]} 笔, 跳过 {result["skipped"]} 笔',
+            'data': result
+        })
+    except Exception as e:
+        logger.error(f"手动同步失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/trades/sync/status', methods=['GET'])
+def api_get_sync_status():
+    """获取同步服务状态"""
+    try:
+        from scripts.binance_trade_sync import get_sync_status
+        status = get_sync_status()
+        return jsonify({'success': True, 'data': status})
+    except Exception as e:
+        logger.error(f"获取同步状态失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 
 # 信号日志文件路径（与 StrategyLogger 一致）
 SIGNAL_LOG_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'trade_signals.json')
@@ -1574,6 +1610,14 @@ if __name__ == '__main__':
     # 启动策略自动启动线程
     auto_start_thread = Thread(target=auto_start_strategy, daemon=True)
     auto_start_thread.start()
+    
+    # 启动币安交易同步服务（每5分钟同步一次）
+    try:
+        from scripts.binance_trade_sync import start_sync_service
+        start_sync_service(interval=300)
+        logger.info("🔄 币安交易同步服务已启动")
+    except Exception as e:
+        logger.warning(f"币安交易同步服务启动失败: {e}")
     
     # 启动Flask服务器
     host = os.getenv('WEB_HOST', '0.0.0.0')
