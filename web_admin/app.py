@@ -1,5 +1,14 @@
 ﻿import sys
 import os
+
+# 导入eventlet并打补丁（必须在所有其他导入之前）
+try:
+    import eventlet
+    eventlet.monkey_patch()
+    ASYNC_MODE = 'eventlet'
+except ImportError:
+    ASYNC_MODE = 'threading'
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 先加载环境变量，确保GEMINI_API_KEY等配置可用
@@ -30,22 +39,22 @@ log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'web_admin.log')
 
+# 配置日志 - 仅写入文件，不输出到控制台（减少I/O阻塞）
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,  # 提高日志级别，减少日志量
     format='%(asctime)s | %(levelname)s | %(message)s',
     handlers=[
-        logging.FileHandler(log_file, encoding='utf-8'),
-        logging.StreamHandler()
+        logging.FileHandler(log_file, encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
-logger.info(f'Web admin log file: {log_file}')
+logger.warning(f'Web admin log file: {log_file}')
 
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
 app = Flask(__name__, template_folder=template_dir)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
-app.config['TEMPLATES_AUTO_RELOAD'] = True  # 开发模式下自动重载模板
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config['TEMPLATES_AUTO_RELOAD'] = False  # 关闭模板自动重载，提高性能
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=ASYNC_MODE, logger=False, engineio_logger=False)
 
 # 获取核心组件（延迟初始化）
 _exchange = None
@@ -738,7 +747,7 @@ def get_settings():
         settings = {
             # API配置（从环境变量读取）
             'binance_api_key': os.getenv('BINANCE_API_KEY', ''),
-            'binance_secret_key': '',  # 不返回secret
+            'binance_secret_key': os.getenv('BINANCE_SECRET_KEY', ''),
             'telegram_bot_token': os.getenv('TELEGRAM_BOT_TOKEN', ''),
             'telegram_chat_id': os.getenv('TELEGRAM_CHAT_ID', ''),
             # 邮件配置（从环境变量读取）
@@ -746,7 +755,7 @@ def get_settings():
             'email_host': os.getenv('EMAIL_HOST', 'smtp.gmail.com'),
             'email_port': int(os.getenv('EMAIL_PORT', 587)),
             'email_user': os.getenv('EMAIL_USER', ''),
-            'email_password': '',  # 不返回密码
+            'email_password': os.getenv('EMAIL_PASSWORD', ''),
             'email_to': os.getenv('EMAIL_TO', ''),
             # 交易参数（从运行中的组件读取实时值）
             'max_position_usdt': risk_manager.max_position_usdt,
@@ -1152,6 +1161,57 @@ def handle_heartbeat(data):
     """处理客户端心跳"""
     logger.debug(f'收到心跳: {data}')
     emit('heartbeat_ack', {'timestamp': time.time(), 'status': 'ok'})
+
+
+# ==================== 信号监控配置持久化API ====================
+
+SIGNAL_CONFIG_FILE = os.path.join(log_dir, 'signal_monitor_config.json')
+
+@app.route('/api/signal_config', methods=['GET'])
+def get_signal_config():
+    """获取信号监控配置"""
+    try:
+        if os.path.exists(SIGNAL_CONFIG_FILE):
+            with open(SIGNAL_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            return jsonify({'success': True, 'data': config})
+        else:
+            # 返回默认配置
+            return jsonify({
+                'success': True,
+                'data': {
+                    'focus_nodes': [
+                        {'slot': 1, 'symbol': None, 'strategy': None, 'timeframes': [], 'aiModel': None, 'enabled': False},
+                        {'slot': 2, 'symbol': None, 'strategy': None, 'timeframes': [], 'aiModel': None, 'enabled': False},
+                        {'slot': 3, 'symbol': None, 'strategy': None, 'timeframes': [], 'aiModel': None, 'enabled': False}
+                    ],
+                    'multi_symbols': [],
+                    'multi_config': {'strategy': None, 'timeframes': [], 'aiModel': None}
+                }
+            })
+    except Exception as e:
+        logger.error(f"获取信号监控配置失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/signal_config', methods=['POST'])
+def save_signal_config():
+    """保存信号监控配置"""
+    try:
+        data = request.get_json() or {}
+        config = {
+            'focus_nodes': data.get('focus_nodes', []),
+            'multi_symbols': data.get('multi_symbols', []),
+            'multi_config': data.get('multi_config', {}),
+            'updated_at': time.time()
+        }
+        
+        with open(SIGNAL_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True, 'message': '配置已保存'})
+    except Exception as e:
+        logger.error(f"保存信号监控配置失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 def broadcast_status():
     """后台线程：定期广播状态更新"""
@@ -1595,5 +1655,9 @@ if __name__ == '__main__':
     host = os.getenv('WEB_HOST', '0.0.0.0')
     port = int(os.getenv('WEB_PORT', 5000))
     
-    logger.info(f"🌐 Web管理页面启动: http://{host}:{port}")
-    socketio.run(app, host=host, port=port, debug=False)
+    logger.warning(f"🌐 Web管理页面启动: http://{host}:{port}")
+    # 使用eventlet时，配置更高的性能和并发
+    if ASYNC_MODE == 'eventlet':
+        socketio.run(app, host=host, port=port, debug=False, use_reloader=False)
+    else:
+        socketio.run(app, host=host, port=port, debug=False)

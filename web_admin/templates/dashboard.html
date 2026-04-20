@@ -85,7 +85,7 @@
 <body>
     <header class="header">
         <div class="header-top">
-            <h1>📈 自动化交易生存指南-量化交易系统<V1 class="0">v1.0</V1></h1>
+            <h1>📈 自动化交易生存指南-量化交易系统<V1 class="0">v2.0</V1></h1>
             <div class="connection-status"><span class="status-indicator status-offline" id="connectionStatus"></span><span id="connectionText">连接中...</span></div>
         </div>
         <nav class="nav">
@@ -117,8 +117,9 @@
 
         <div class="card" style="margin-bottom: 20px;">
             <h3>📊 实时K线图表</h3>
-            <div style="margin-bottom: 15px;">
-                <select id="chartSymbol" onchange="updateChart()">
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <input type="text" id="symbolSearch" placeholder="🔍 搜索币种..." style="padding: 8px 12px; background: #2d3748; border: 1px solid #4a5568; border-radius: 6px; color: #e0e0e0; font-size: 14px; min-width: 150px;" oninput="filterSymbols()">
+                <select id="chartSymbol" onchange="updateChart()" style="flex: 1; min-width: 200px;">
                     <optgroup label="主流币">
                         <option value="BTC/USDT">BTC/USDT</option>
                         <option value="ETH/USDT">ETH/USDT</option>
@@ -128,21 +129,97 @@
                         <option value="DOGE/USDT">DOGE/USDT</option>
                         <option value="ADA/USDT">ADA/USDT</option>
                         <option value="AVAX/USDT">AVAX/USDT</option>
+                        <option value="SUI/USDT">SUI/USDT</option>
+                        <option value="TON/USDT">TON/USDT</option>
+                        <option value="TRX/USDT">TRX/USDT</option>
+                        <option value="DOT/USDT">DOT/USDT</option>
+                        <option value="LINK/USDT">LINK/USDT</option>
+                        <option value="MATIC/USDT">MATIC/USDT</option>
+                        <option value="NEAR/USDT">NEAR/USDT</option>
+                        <option value="LTC/USDT">LTC/USDT</option>
+                        <option value="BCH/USDT">BCH/USDT</option>
+                        <option value="ETC/USDT">ETC/USDT</option>
+                        <option value="ATOM/USDT">ATOM/USDT</option>
+                        <option value="FIL/USDT">FIL/USDT</option>
+                        <option value="ALGO/USDT">ALGO/USDT</option>
+                        <option value="APT/USDT">APT/USDT</option>
+                        <option value="IMX/USDT">IMX/USDT</option>
+                        <option value="INJ/USDT">INJ/USDT</option>
+                        <option value="RNDR/USDT">RNDR/USDT</option>
                     </optgroup>
                     <optgroup label="Layer 2 & DeFi">
-                        <option value="MATIC/USDT">MATIC/USDT</option>
                         <option value="ARB/USDT">ARB/USDT</option>
                         <option value="OP/USDT">OP/USDT</option>
-                        <option value="LINK/USDT">LINK/USDT</option>
                         <option value="UNI/USDT">UNI/USDT</option>
                         <option value="AAVE/USDT">AAVE/USDT</option>
+                        <option value="LDO/USDT">LDO/USDT</option>
+                        <option value="CRV/USDT">CRV/USDT</option>
+                        <option value="MKR/USDT">MKR/USDT</option>
+                        <option value="COMP/USDT">COMP/USDT</option>
+                        <option value="SNX/USDT">SNX/USDT</option>
+                        <option value="YFI/USDT">YFI/USDT</option>
+                        <option value="1INCH/USDT">1INCH/USDT</option>
+                        <option value="SUSHI/USDT">SUSHI/USDT</option>
+                        <option value="DYDX/USDT">DYDX/USDT</option>
+                        <option value="GRT/USDT">GRT/USDT</option>
+                        <option value="LRC/USDT">LRC/USDT</option>
+                        <option value="ZRX/USDT">ZRX/USDT</option>
+                        <option value="BAL/USDT">BAL/USDT</option>
+                        <option value="KNC/USDT">KNC/USDT</option>
                     </optgroup>
-                    <optgroup label="Meme & 其他">
+                    <optgroup label="Meme币">
                         <option value="SHIB/USDT">SHIB/USDT</option>
                         <option value="PEPE/USDT">PEPE/USDT</option>
                         <option value="WIF/USDT">WIF/USDT</option>
                         <option value="BONK/USDT">BONK/USDT</option>
                         <option value="FLOKI/USDT">FLOKI/USDT</option>
+                        <option value="MEME/USDT">MEME/USDT</option>
+                        <option value="BOME/USDT">BOME/USDT</option>
+                        <option value="WLD/USDT">WLD/USDT</option>
+                        <option value="PEOPLE/USDT">PEOPLE/USDT</option>
+                        <option value="BABYDOGE/USDT">BABYDOGE/USDT</option>
+                    </optgroup>
+                    <optgroup label="热门新币">
+                        <option value="TIA/USDT">TIA/USDT</option>
+                        <option value="SEI/USDT">SEI/USDT</option>
+                        <option value="STRK/USDT">STRK/USDT</option>
+                        <option value="PYTH/USDT">PYTH/USDT</option>
+                        <option value="JUP/USDT">JUP/USDT</option>
+                        <option value="JTO/USDT">JTO/USDT</option>
+                        <option value="DYM/USDT">DYM/USDT</option>
+                        <option value="SAGA/USDT">SAGA/USDT</option>
+                        <option value="W/USDT">W/USDT</option>
+                        <option value="ENA/USDT">ENA/USDT</option>
+                        <option value="TAO/USDT">TAO/USDT</option>
+                        <option value="OMNI/USDT">OMNI/USDT</option>
+                        <option value="REZ/USDT">REZ/USDT</option>
+                        <option value="NOT/USDT">NOT/USDT</option>
+                    </optgroup>
+                    <optgroup label="AI概念">
+                        <option value="FET/USDT">FET/USDT</option>
+                        <option value="RNDR/USDT">RNDR/USDT</option>
+                        <option value="AGIX/USDT">AGIX/USDT</option>
+                        <option value="OCEAN/USDT">OCEAN/USDT</option>
+                        <option value="ARKM/USDT">ARKM/USDT</option>
+                        <option value="PHB/USDT">PHB/USDT</option>
+                        <option value="NMR/USDT">NMR/USDT</option>
+                    </optgroup>
+                    <optgroup label="存储 & 基础设施">
+                        <option value="FIL/USDT">FIL/USDT</option>
+                        <option value="AR/USDT">AR/USDT</option>
+                        <option value="STORJ/USDT">STORJ/USDT</option>
+                        <option value="SC/USDT">SC/USDT</option>
+                        <option value="HOT/USDT">HOT/USDT</option>
+                    </optgroup>
+                    <optgroup label="游戏 & 元宇宙">
+                        <option value="SAND/USDT">SAND/USDT</option>
+                        <option value="MANA/USDT">MANA/USDT</option>
+                        <option value="AXS/USDT">AXS/USDT</option>
+                        <option value="GALA/USDT">GALA/USDT</option>
+                        <option value="ENJ/USDT">ENJ/USDT</option>
+                        <option value="ILV/USDT">ILV/USDT</option>
+                        <option value="YGG/USDT">YGG/USDT</option>
+                        <option value="MAGIC/USDT">MAGIC/USDT</option>
                     </optgroup>
                 </select>
                 <select id="chartTimeframe" onchange="updateChart()">
@@ -238,9 +315,78 @@
     </div>
 
     <script>
-        const socket = io();
+        // 优化SocketIO连接配置
+        const socket = io({
+            transports: ['websocket', 'polling'],  // 优先使用WebSocket
+            reconnection: true,
+            reconnectionDelay: 1000,  // 重连延迟1秒
+            reconnectionDelayMax: 5000,  // 最大重连延迟5秒
+            reconnectionAttempts: 10  // 最大重连次数
+        });
         let currentData = {};
         let chart = null;
+        
+        // 保存原始币种列表用于搜索
+        let originalSymbolOptions = [];
+        
+        // 搜索过滤币种
+        function filterSymbols() {
+            const searchInput = document.getElementById('symbolSearch');
+            const select = document.getElementById('chartSymbol');
+            const searchTerm = searchInput.value.toUpperCase().trim();
+            
+            // 首次保存原始选项
+            if (originalSymbolOptions.length === 0) {
+                originalSymbolOptions = Array.from(select.querySelectorAll('option')).map(opt => ({
+                    value: opt.value,
+                    text: opt.text,
+                    optgroup: opt.parentElement.label
+                }));
+            }
+            
+            // 清空当前选项
+            select.innerHTML = '';
+            
+            // 按分组重新组织
+            const groups = {};
+            originalSymbolOptions.forEach(opt => {
+                if (!searchTerm || opt.text.includes(searchTerm)) {
+                    if (!groups[opt.optgroup]) {
+                        groups[opt.optgroup] = [];
+                    }
+                    groups[opt.optgroup].push(opt);
+                }
+            });
+            
+            // 重建选项
+            Object.keys(groups).forEach(groupName => {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = groupName;
+                groups[groupName].forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.text;
+                    optgroup.appendChild(option);
+                });
+                select.appendChild(optgroup);
+            });
+            
+            // 如果没有搜索结果，显示提示
+            if (Object.keys(groups).length === 0) {
+                const option = document.createElement('option');
+                option.textContent = '无匹配币种';
+                option.disabled = true;
+                select.appendChild(option);
+            }
+        }
+        
+        // 清空搜索
+        document.getElementById('symbolSearch').addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                this.value = '';
+                filterSymbols();
+            }
+        });
         let candlestickSeries = null;
         let volumeSeries = null;
         let lastTickerPrice = null;
@@ -294,10 +440,10 @@
             tbody.innerHTML = positions.map(pos => {
                 const symbol = pos.symbol || '-';
                 const side = pos.side || 'LONG';
-                const contracts = Number(pos.contracts || 0);
-                const entry = Number(pos.entry_price || 0);
-                const mark = Number(pos.mark_price || 0);
-                const pnl = Number(pos.unrealized_pnl || 0);
+                const contracts = Number(pos.contracts || pos.positionAmt || 0);
+                const entry = Number(pos.entry_price || pos.entryPrice || 0);
+                const mark = Number(pos.mark_price || pos.markPrice || 0);
+                const pnl = Number(pos.unrealized_pnl || pos.unrealizedProfit || 0);
                 const lev = Number(pos.leverage || 1);
                 return `<tr><td>${symbol}</td><td>${side}</td><td>${contracts.toFixed(4)}</td><td>$${entry.toFixed(4)}</td><td>$${mark.toFixed(4)}</td><td class="${pnl >= 0 ? 'positive' : 'negative'}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</td><td>${lev}x</td><td><button class="btn btn-danger" style="padding: 6px 10px; font-size: 12px;" onclick="closePosition('${symbol}')">平仓</button></td></tr>`;
             }).join('');

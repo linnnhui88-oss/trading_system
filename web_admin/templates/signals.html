@@ -6,89 +6,25 @@
     <title>信号监控 - 自动化交易生存指南-量化交易系统</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        :root {
-            --primary: #4fd1c5;
-            --success: #48bb78;
-            --warning: #ed8936;
-            --danger: #f56565;
-            --bg-dark: #0a0f14;
-            --bg-card: #0d1117;
-            --bg-hover: #1a1f2e;
-            --border: #2d3748;
-            --text: #e0e0e0;
-            --text-dim: #6b7280;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
-            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Courier New', monospace;
-            background: var(--bg-dark);
-            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1419;
+            color: #e0e0e0;
             min-height: 100vh;
             padding-top: 130px;
-            overflow-x: hidden;
-        }
-        
-        /* 背景网格 */
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-image: 
-                linear-gradient(rgba(79, 209, 197, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(79, 209, 197, 0.03) 1px, transparent 1px);
-            background-size: 50px 50px;
-            pointer-events: none;
-            z-index: -1;
-        }
-        
-        /* 扫描线动画 */
-        .scanline {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, var(--primary), transparent);
-            opacity: 0.5;
-            animation: scanline 8s linear infinite;
-            pointer-events: none;
-            z-index: 9999;
-        }
-        
-        @keyframes scanline {
-            0% { transform: translateY(-100vh); }
-            100% { transform: translateY(100vh); }
         }
         
         .header {
-            background: linear-gradient(135deg, rgba(26, 31, 46, 0.95) 0%, rgba(45, 55, 72, 0.95) 100%);
+            background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
             padding: 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             z-index: 1000;
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .header h1 {
-            font-size: 20px;
-            color: var(--primary);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            text-shadow: 0 0 10px rgba(79, 209, 197, 0.5);
         }
         
         .header-top {
@@ -97,15 +33,12 @@
             align-items: center;
         }
         
-        .connection-status {
-            padding: 8px 16px;
-            background: rgba(13, 17, 23, 0.8);
-            border-radius: 8px;
+        .header h1 {
+            font-size: 24px;
+            color: #4fd1c5;
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            border: 1px solid var(--border);
+            gap: 10px;
         }
         
         .nav {
@@ -115,20 +48,42 @@
         }
         
         .nav a {
-            color: var(--text-dim);
+            color: #a0aec0;
             text-decoration: none;
             padding: 8px 16px;
             border-radius: 6px;
             transition: all 0.3s;
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
         }
         
         .nav a:hover, .nav a.active {
-            background: var(--primary);
-            color: var(--bg-dark);
-            box-shadow: 0 0 15px rgba(79, 209, 197, 0.4);
+            background: #4fd1c5;
+            color: #1a1f2e;
+        }
+        
+        .connection-status {
+            padding: 8px 16px;
+            background: rgba(45, 55, 72, 0.8);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-online {
+            background: #48bb78;
+            box-shadow: 0 0 10px #48bb78;
+        }
+        
+        .status-offline {
+            background: #f56565;
         }
         
         .container {
@@ -137,53 +92,75 @@
             padding: 20px;
         }
         
-        /* AI大脑监控中心 */
-        .ai-brain-section {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+        .card {
+            background: #1a1f2e;
             border-radius: 12px;
             padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            border: 1px solid #2d3748;
             margin-bottom: 20px;
-            position: relative;
-            overflow: hidden;
         }
         
-        .ai-brain-section::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            right: -50%;
-            bottom: -50%;
-            background: radial-gradient(circle, rgba(79, 209, 197, 0.1) 0%, transparent 70%);
-            animation: pulse 4s ease-in-out infinite;
-            pointer-events: none;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { transform: scale(0.8); opacity: 0.5; }
-            50% { transform: scale(1.2); opacity: 1; }
-        }
-        
-        .section-title {
-            color: var(--primary);
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
+        .card h3 {
+            color: #4fd1c5;
             margin-bottom: 15px;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             display: flex;
             align-items: center;
             gap: 10px;
         }
         
-        .section-title::before {
-            content: '◉';
-            animation: blink 1s infinite;
+        /* AI大脑监控中心 */
+        .ai-brain-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
         }
         
-        @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0.3; }
+        .ai-brain-stats {
+            flex: 1;
+        }
+        
+        .ai-brain-stats .main-stat {
+            font-size: 24px;
+            color: #4fd1c5;
+            margin-bottom: 5px;
+        }
+        
+        .ai-brain-stats .sub-stat {
+            font-size: 12px;
+            color: #a0aec0;
+        }
+        
+        .neural-network {
+            text-align: right;
+        }
+        
+        .neural-network-label {
+            font-size: 12px;
+            color: #a0aec0;
+            margin-bottom: 5px;
+        }
+        
+        .neural-bars {
+            display: flex;
+            gap: 3px;
+            justify-content: flex-end;
+        }
+        
+        .neural-bar {
+            width: 4px;
+            background: #4fd1c5;
+            animation: pulse 0.6s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; height: 15px; }
+            50% { opacity: 1; height: 30px; }
         }
         
         /* 重点盯盘节点 */
@@ -195,8 +172,8 @@
         }
         
         .node-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+            background: #1a1f2e;
+            border: 1px solid #2d3748;
             border-radius: 12px;
             padding: 20px;
             position: relative;
@@ -204,8 +181,8 @@
         }
         
         .node-card.active {
-            border-color: var(--primary);
-            box-shadow: 0 0 20px rgba(79, 209, 197, 0.2), inset 0 0 20px rgba(79, 209, 197, 0.05);
+            border-color: #4fd1c5;
+            box-shadow: 0 0 20px rgba(79, 209, 197, 0.2);
         }
         
         .node-card.active::after {
@@ -216,7 +193,7 @@
             right: 0;
             bottom: 0;
             border-radius: 12px;
-            border: 2px solid var(--primary);
+            border: 2px solid #4fd1c5;
             animation: borderPulse 2s infinite;
             pointer-events: none;
         }
@@ -232,12 +209,12 @@
             align-items: center;
             margin-bottom: 15px;
             padding-bottom: 10px;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid #2d3748;
         }
         
         .node-id {
             font-size: 12px;
-            color: var(--text-dim);
+            color: #a0aec0;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
@@ -253,7 +230,7 @@
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: var(--success);
+            background: #48bb78;
             animation: statusPulse 2s infinite;
         }
         
@@ -265,21 +242,19 @@
         .symbol-selector {
             width: 100%;
             padding: 12px;
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
+            background: #0d1117;
+            border: 1px solid #2d3748;
             border-radius: 8px;
-            color: var(--text);
-            font-size: 18px;
+            color: #e0e0e0;
+            font-size: 16px;
             font-weight: bold;
-            font-family: inherit;
             cursor: pointer;
             transition: all 0.3s;
             margin-bottom: 15px;
         }
         
         .symbol-selector:hover, .symbol-selector:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 10px rgba(79, 209, 197, 0.3);
+            border-color: #4fd1c5;
             outline: none;
         }
         
@@ -291,22 +266,32 @@
         }
         
         .config-item {
-            background: var(--bg-dark);
+            background: #0d1117;
             padding: 10px;
             border-radius: 6px;
-            border: 1px solid var(--border);
+            border: 1px solid #2d3748;
         }
         
         .config-label {
             font-size: 10px;
-            color: var(--text-dim);
+            color: #a0aec0;
             text-transform: uppercase;
             margin-bottom: 5px;
         }
         
         .config-value {
             font-size: 13px;
-            color: var(--primary);
+            color: #4fd1c5;
+        }
+        
+        .config-value select {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: inherit;
+            font-family: inherit;
+            font-size: 13px;
+            cursor: pointer;
         }
         
         .node-toggle {
@@ -314,7 +299,7 @@
             align-items: center;
             justify-content: space-between;
             padding: 10px;
-            background: var(--bg-dark);
+            background: #0d1117;
             border-radius: 8px;
         }
         
@@ -322,14 +307,14 @@
             position: relative;
             width: 50px;
             height: 26px;
-            background: var(--border);
+            background: #2d3748;
             border-radius: 13px;
             cursor: pointer;
             transition: all 0.3s;
         }
         
         .toggle-switch.active {
-            background: var(--success);
+            background: #48bb78;
         }
         
         .toggle-switch::after {
@@ -348,15 +333,38 @@
             transform: translateX(24px);
         }
         
-        /* 多币种矩阵 */
-        .multi-symbol-section {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
+        /* 时间周期选择 */
+        .timeframe-select {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            margin-top: 5px;
         }
         
+        .timeframe-select label {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            padding: 3px 6px;
+            background: #0d1117;
+            border-radius: 4px;
+            border: 1px solid #2d3748;
+            transition: all 0.3s;
+        }
+        
+        .timeframe-select label:hover {
+            border-color: #4fd1c5;
+        }
+        
+        .timeframe-select label.selected {
+            background: rgba(79, 209, 197, 0.2);
+            border-color: #4fd1c5;
+            color: #4fd1c5;
+        }
+        
+        /* 多币种矩阵 */
         .symbol-matrix {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
@@ -371,8 +379,8 @@
             align-items: center;
             justify-content: center;
             padding: 10px;
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
+            background: #0d1117;
+            border: 1px solid #2d3748;
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s;
@@ -381,20 +389,19 @@
         }
         
         .symbol-chip:hover:not(.disabled) {
-            border-color: var(--primary);
-            box-shadow: 0 0 10px rgba(79, 209, 197, 0.2);
+            border-color: #4fd1c5;
         }
         
         .symbol-chip.selected {
             background: rgba(79, 209, 197, 0.1);
-            border-color: var(--primary);
-            color: var(--primary);
+            border-color: #4fd1c5;
+            color: #4fd1c5;
         }
         
         .symbol-chip.disabled {
             opacity: 0.3;
             cursor: not-allowed;
-            background: var(--border);
+            background: #2d3748;
         }
         
         .symbol-chip .indicator {
@@ -404,17 +411,21 @@
             width: 6px;
             height: 6px;
             border-radius: 50%;
-            background: var(--success);
+            background: #48bb78;
             animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
         }
         
         /* 终端日志 */
         .terminal-section {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+            background: #0d1117;
+            border: 1px solid #2d3748;
             border-radius: 12px;
             padding: 20px;
-            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Courier New', monospace;
         }
         
         .terminal-header {
@@ -423,11 +434,11 @@
             gap: 10px;
             margin-bottom: 15px;
             padding-bottom: 10px;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid #2d3748;
         }
         
         .terminal-title {
-            color: var(--primary);
+            color: #4fd1c5;
             font-size: 13px;
         }
         
@@ -439,27 +450,27 @@
         
         .terminal-btn {
             padding: 4px 10px;
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
+            background: #1a1f2e;
+            border: 1px solid #2d3748;
             border-radius: 4px;
-            color: var(--text-dim);
+            color: #a0aec0;
             font-size: 11px;
             cursor: pointer;
             transition: all 0.3s;
         }
         
         .terminal-btn:hover {
-            border-color: var(--primary);
-            color: var(--primary);
+            border-color: #4fd1c5;
+            color: #4fd1c5;
         }
         
         .terminal-body {
-            background: var(--bg-dark);
+            background: #0a0f14;
             border-radius: 8px;
             padding: 15px;
             height: 400px;
             overflow-y: auto;
-            font-size: 12px;
+            font-size: 13px;
             line-height: 1.8;
         }
         
@@ -474,14 +485,14 @@
         }
         
         .log-time {
-            color: var(--text-dim);
+            color: #6b7280;
         }
         
-        .log-info { color: var(--text); }
-        .log-success { color: var(--success); }
-        .log-warning { color: var(--warning); }
-        .log-error { color: var(--danger); }
-        .log-signal { color: var(--primary); font-weight: bold; }
+        .log-info { color: #e0e0e0; }
+        .log-success { color: #48bb78; }
+        .log-warning { color: #ed8936; }
+        .log-error { color: #f56565; }
+        .log-signal { color: #4fd1c5; font-weight: bold; }
         
         .log-highlight {
             background: rgba(79, 209, 197, 0.1);
@@ -493,7 +504,7 @@
             display: inline-block;
             width: 8px;
             height: 15px;
-            background: var(--primary);
+            background: #4fd1c5;
             animation: cursorBlink 1s infinite;
             vertical-align: middle;
             margin-left: 2px;
@@ -519,14 +530,12 @@
     </style>
 </head>
 <body>
-    <div class="scanline"></div>
-    
     <header class="header">
         <div class="header-top">
-            <h1>📡 SIGNAL_MONITOR // AI_BRAIN_V2.0</h1>
+            <h1>📈 自动化交易生存指南-量化交易系统<V1 class="0">v2.0</V1></h1>
             <div class="connection-status">
-                <span class="status-dot" id="connectionStatus"></span>
-                <span id="connectionText">INITIALIZING...</span>
+                <span class="status-indicator status-offline" id="connectionStatus"></span>
+                <span id="connectionText">连接中...</span>
             </div>
         </div>
         <nav class="nav">
@@ -539,64 +548,69 @@
 
     <div class="container">
         <!-- AI大脑监控中心 -->
-        <div class="ai-brain-section">
-            <div class="section-title">AI Brain Monitoring Center</div>
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
-                <div>
-                    <div style="font-size: 24px; color: var(--primary); margin-bottom: 5px;">
-                        <span id="activeSymbols">0</span> SYMBOLS ACTIVE
+        <div class="card">
+            <h3>📡 AI信号监控中心</h3>
+            <div class="ai-brain-section">
+                <div class="ai-brain-stats">
+                    <div class="main-stat">
+                        <span id="activeSymbols">0</span> 个活跃币种
                     </div>
-                    <div style="font-size: 12px; color: var(--text-dim);">
-                        LAST SCAN: <span id="lastScan">--</span> | 
-                        LATENCY: <span id="latency">--</span>ms |
-                        AI STATUS: <span style="color: var(--success);">OPERATIONAL</span>
+                    <div class="sub-stat">
+                        上次扫描: <span id="lastScan">--</span> | 
+                        延迟: <span id="latency">--</span>ms |
+                        AI状态: <span style="color: #48bb78;">运行中</span>
                     </div>
                 </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 5px;">NEURAL NETWORK</div>
-                    <div style="display: flex; gap: 3px;">
-                        <span style="width: 4px; height: 20px; background: var(--success); animation: pulse 0.5s infinite;"></span>
-                        <span style="width: 4px; height: 30px; background: var(--primary); animation: pulse 0.7s infinite;"></span>
-                        <span style="width: 4px; height: 25px; background: var(--success); animation: pulse 0.6s infinite;"></span>
-                        <span style="width: 4px; height: 35px; background: var(--primary); animation: pulse 0.8s infinite;"></span>
-                        <span style="width: 4px; height: 20px; background: var(--success); animation: pulse 0.5s infinite;"></span>
+                <div class="neural-network">
+                    <div class="neural-network-label">神经网络</div>
+                    <div class="neural-bars">
+                        <span class="neural-bar" style="animation-delay: 0s; height: 20px;"></span>
+                        <span class="neural-bar" style="animation-delay: 0.1s; height: 30px;"></span>
+                        <span class="neural-bar" style="animation-delay: 0.2s; height: 25px;"></span>
+                        <span class="neural-bar" style="animation-delay: 0.3s; height: 35px;"></span>
+                        <span class="neural-bar" style="animation-delay: 0.4s; height: 20px;"></span>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- 重点盯盘节点 -->
-        <div class="section-title">Focus Monitor Nodes</div>
-        <div class="focus-nodes" id="focusNodes">
-            <!-- 动态生成3个节点 -->
+        <div class="card">
+            <h3>🎯 重点监控节点</h3>
+            <div class="focus-nodes" id="focusNodes">
+                <!-- 动态生成3个节点 -->
+            </div>
         </div>
 
         <!-- 多币种矩阵 -->
-        <div class="multi-symbol-section">
-            <div class="section-title">Multi-Symbol Matrix</div>
-            <div style="margin-bottom: 15px;">
-                <span style="color: var(--text-dim); font-size: 12px;">SELECTED: </span>
-                <span id="selectedCount" style="color: var(--primary);">0</span>
-                <span style="color: var(--text-dim); font-size: 12px;"> symbols | </span>
-                <span style="color: var(--text-dim); font-size: 12px);">FOCUS SYMBOLS (disabled in matrix): </span>
-                <span id="focusSymbolsList" style="color: var(--warning);">--</span>
+        <div class="card">
+            <h3>🔍 多币种矩阵</h3>
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <input type="text" id="matrixSearch" placeholder="🔍 搜索币种..." style="padding: 8px 12px; background: #0d1117; border: 1px solid #2d3748; border-radius: 6px; color: #e0e0e0; font-size: 14px; min-width: 150px;" oninput="filterMatrixSymbols()">
+                <button class="terminal-btn" onclick="toggleAllMatrixSymbols(true)">全选</button>
+                <button class="terminal-btn" onclick="toggleAllMatrixSymbols(false)">取消全选</button>
+                <span style="color: #a0aec0; font-size: 12px; margin-left: auto;">已选择: </span>
+                <span id="selectedCount" style="color: #4fd1c5;">0</span>
+                <span style="color: #a0aec0; font-size: 12px;"> 个币种 | </span>
+                <span style="color: #a0aec0; font-size: 12px;">重点币种(矩阵中禁用): </span>
+                <span id="focusSymbolsList" style="color: #ed8936;">--</span>
             </div>
             <div class="symbol-matrix" id="symbolMatrix">
                 <!-- 动态生成币种列表 -->
             </div>
-            <div style="margin-top: 15px; padding: 15px; background: var(--bg-dark); border-radius: 8px;">
-                <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 10px;">UNIFIED CONFIGURATION</div>
+            <div style="margin-top: 15px; padding: 15px; background: #0d1117; border-radius: 8px;">
+                <div style="font-size: 12px; color: #a0aec0; margin-bottom: 10px;">统一配置</div>
                 <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                    <select id="multiStrategy" class="symbol-selector" style="flex: 1; min-width: 150px; font-size: 13px;">
-                        <option value="">Select Strategy...</option>
+                    <select id="multiStrategy" style="flex: 1; min-width: 150px; padding: 10px; background: #0d1117; border: 1px solid #2d3748; border-radius: 6px; color: #e0e0e0; font-size: 13px;">
+                        <option value="">选择策略...</option>
                     </select>
-                    <select id="multiAiModel" class="symbol-selector" style="flex: 1; min-width: 150px; font-size: 13px;">
-                        <option value="">Select AI Model...</option>
+                    <select id="multiAiModel" style="flex: 1; min-width: 150px; padding: 10px; background: #0d1117; border: 1px solid #2d3748; border-radius: 6px; color: #e0e0e0; font-size: 13px;">
+                        <option value="">选择AI模型...</option>
                     </select>
                 </div>
                 <div style="margin-top: 10px;">
-                    <span style="color: var(--text-dim); font-size: 11px;">TIMEFRAMES: </span>
-                    <div id="multiTimeframes" style="display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap;">
+                    <span style="color: #a0aec0; font-size: 11px;">时间周期: </span>
+                    <div id="multiTimeframes" class="timeframe-select">
                         <!-- 动态生成周期选择 -->
                     </div>
                 </div>
@@ -606,24 +620,30 @@
         <!-- 终端日志 -->
         <div class="terminal-section">
             <div class="terminal-header">
-                <span class="terminal-title">>_ TERMINAL // SIGNAL_LOG</span>
+                <span class="terminal-title">>_ 终端 // 信号日志</span>
                 <div class="terminal-controls">
-                    <button class="terminal-btn" onclick="clearLogs()">CLEAR</button>
-                    <button class="terminal-btn" onclick="pauseLogs()" id="pauseBtn">PAUSE</button>
+                    <button class="terminal-btn" onclick="clearLogs()">清空</button>
+                    <button class="terminal-btn" onclick="pauseLogs()" id="pauseBtn">暂停</button>
                 </div>
             </div>
             <div class="terminal-body" id="terminalBody">
-                <div class="log-line"><span class="log-time">[SYSTEM]</span> Initializing AI brain monitoring system...</div>
-                <div class="log-line"><span class="log-time">[SYSTEM]</span> Loading configuration... <span class="log-success">OK</span></div>
-                <div class="log-line"><span class="log-time">[SYSTEM]</span> Connecting to Binance API... <span class="log-success">CONNECTED</span></div>
+                <div class="log-line"><span class="log-time">[系统]</span> 正在初始化AI信号监控系统...</div>
+                <div class="log-line"><span class="log-time">[系统]</span> 加载配置... <span class="log-success">成功</span></div>
+                <div class="log-line"><span class="log-time">[系统]</span> 连接Binance API... <span class="log-success">已连接</span></div>
                 <div class="log-line"><span class="cursor"></span></div>
             </div>
         </div>
     </div>
 
     <script>
-        // Socket.io连接
-        const socket = io();
+        // 优化SocketIO连接配置
+        const socket = io({
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            reconnectionAttempts: 10
+        });
         
         // 全局状态
         let allSymbols = [];
@@ -641,20 +661,21 @@
         const strategies = ['MA99_MTF', 'MACD', 'RSI', 'BollingerBands'];
         const timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d'];
         const aiModels = ['kimi', 'gpt', 'gemini', 'claude', 'qwen', 'deepseek'];
+        const aiModelNames = {kimi: 'Kimi', gpt: 'GPT', gemini: 'Gemini', claude: 'Claude', qwen: '通义千问', deepseek: 'DeepSeek'};
         
         // Socket事件
         socket.on('connect', function() {
             console.log('[Signals] Socket connected');
-            document.getElementById('connectionStatus').style.background = '#48bb78';
-            document.getElementById('connectionText').textContent = 'CONNECTED';
-            addLog('SYSTEM', 'WebSocket connected', 'success');
+            document.getElementById('connectionStatus').className = 'status-indicator status-online';
+            document.getElementById('connectionText').textContent = '已连接';
+            addLog('系统', 'WebSocket已连接', 'success');
         });
         
         socket.on('disconnect', function() {
             console.log('[Signals] Socket disconnected');
-            document.getElementById('connectionStatus').style.background = '#f56565';
-            document.getElementById('connectionText').textContent = 'DISCONNECTED';
-            addLog('SYSTEM', 'WebSocket disconnected', 'error');
+            document.getElementById('connectionStatus').className = 'status-indicator status-offline';
+            document.getElementById('connectionText').textContent = '已断开';
+            addLog('系统', 'WebSocket已断开', 'error');
         });
         
         socket.on('signal_log_update', function(data) {
@@ -666,11 +687,59 @@
         // 初始化
         async function init() {
             await loadSymbols();
+            await loadSignalConfig();  // 加载保存的配置
             renderFocusNodes();
             renderSymbolMatrix();
             renderMultiConfig();
             loadSignalLogs();
             startStatsUpdate();
+        }
+        
+        // 加载信号监控配置
+        async function loadSignalConfig() {
+            try {
+                const response = await fetch('/api/signal_config');
+                const data = await response.json();
+                if (data.success && data.data) {
+                    const config = data.data;
+                    if (config.focus_nodes) {
+                        focusNodes = config.focus_nodes;
+                    }
+                    if (config.multi_symbols) {
+                        multiSymbols = config.multi_symbols;
+                    }
+                    if (config.multi_config) {
+                        multiConfig = config.multi_config;
+                    }
+                    addLog('系统', '配置已恢复', 'success');
+                }
+            } catch (e) {
+                console.error('加载配置失败:', e);
+                addLog('错误', '加载配置失败: ' + e.message, 'error');
+            }
+        }
+        
+        // 保存信号监控配置
+        async function saveSignalConfig() {
+            try {
+                const config = {
+                    focus_nodes: focusNodes,
+                    multi_symbols: multiSymbols,
+                    multi_config: multiConfig
+                };
+                const response = await fetch('/api/signal_config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(config)
+                });
+                const data = await response.json();
+                if (data.success) {
+                    addLog('系统', '配置已保存', 'success');
+                }
+            } catch (e) {
+                console.error('保存配置失败:', e);
+                addLog('错误', '保存配置失败: ' + e.message, 'error');
+            }
         }
         
         // 加载币种列表
@@ -680,13 +749,17 @@
                 const data = await response.json();
                 if (data.success) {
                     allSymbols = data.data || [];
-                    addLog('SYSTEM', `Loaded ${allSymbols.length} trading symbols`, 'success');
+                    addLog('系统', `已加载 ${allSymbols.length} 个交易币种`, 'success');
                 }
             } catch (e) {
                 console.error('Failed to load symbols:', e);
-                addLog('ERROR', 'Failed to load symbols: ' + e.message, 'error');
+                addLog('错误', '加载币种失败: ' + e.message, 'error');
                 // 使用默认列表
-                allSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'LINKUSDT'];
+                allSymbols = [
+                    {symbol: 'BTCUSDT'}, {symbol: 'ETHUSDT'}, {symbol: 'SOLUSDT'}, 
+                    {symbol: 'BNBUSDT'}, {symbol: 'XRPUSDT'}, {symbol: 'ADAUSDT'}, 
+                    {symbol: 'DOGEUSDT'}, {symbol: 'LINKUSDT'}
+                ];
             }
         }
         
@@ -696,16 +769,20 @@
             container.innerHTML = focusNodes.map((node, index) => `
                 <div class="node-card ${node.enabled ? 'active' : ''}" id="node-${node.slot}">
                     <div class="node-header">
-                        <span class="node-id">NODE-0${node.slot}</span>
+                        <span class="node-id">节点-0${node.slot}</span>
                         <div class="node-status">
                             <span class="status-dot" style="background: ${node.enabled ? '#48bb78' : '#6b7280'}"></span>
-                            <span>${node.enabled ? 'ACTIVE' : 'STANDBY'}</span>
+                            <span>${node.enabled ? '运行中' : '待机'}</span>
                         </div>
                     </div>
                     
-                    <select class="symbol-selector" onchange="updateFocusNode(${node.slot}, 'symbol', this.value)">
-                        <option value="">SELECT SYMBOL...</option>
-                        ${allSymbols.map(s => `
+                    <input type="text" id="nodeSearch-${node.slot}" placeholder="🔍 搜索币种..." 
+                        style="width: 100%; padding: 8px; margin-bottom: 10px; background: #0d1117; border: 1px solid #2d3748; border-radius: 6px; color: #e0e0e0; font-size: 13px;"
+                        oninput="filterNodeSymbols(${node.slot})" value="${node.searchTerm || ''}">
+                    
+                    <select class="symbol-selector" id="nodeSelect-${node.slot}" onchange="updateFocusNode(${node.slot}, 'symbol', this.value)">
+                        <option value="">选择币种...</option>
+                        ${getFilteredNodeSymbols(node).map(s => `
                             <option value="${s.symbol}" ${node.symbol === s.symbol ? 'selected' : ''} 
                                 ${isSymbolDisabledInFocus(s.symbol, node.slot) ? 'disabled' : ''}>
                                 ${s.symbol}
@@ -715,30 +792,32 @@
                     
                     <div class="node-config">
                         <div class="config-item">
-                            <div class="config-label">Strategy</div>
-                            <select class="config-value" style="width: 100%; background: transparent; border: none; color: inherit; font-family: inherit;" 
-                                onchange="updateFocusNode(${node.slot}, 'strategy', this.value)">
-                                <option value="">--</option>
-                                ${strategies.map(s => `<option value="${s}" ${node.strategy === s ? 'selected' : ''}>${s}</option>`).join('')}
-                            </select>
+                            <div class="config-label">策略</div>
+                            <div class="config-value">
+                                <select onchange="updateFocusNode(${node.slot}, 'strategy', this.value)">
+                                    <option value="">--</option>
+                                    ${strategies.map(s => `<option value="${s}" ${node.strategy === s ? 'selected' : ''}>${s}</option>`).join('')}
+                                </select>
+                            </div>
                         </div>
                         <div class="config-item">
-                            <div class="config-label">AI Model</div>
-                            <select class="config-value" style="width: 100%; background: transparent; border: none; color: inherit; font-family: inherit;"
-                                onchange="updateFocusNode(${node.slot}, 'aiModel', this.value)">
-                                <option value="">--</option>
-                                ${aiModels.map(m => `<option value="${m}" ${node.aiModel === m ? 'selected' : ''}>${m}</option>`).join('')}
-                            </select>
+                            <div class="config-label">AI模型</div>
+                            <div class="config-value">
+                                <select onchange="updateFocusNode(${node.slot}, 'aiModel', this.value)">
+                                    <option value="">--</option>
+                                    ${aiModels.map(m => `<option value="${m}" ${node.aiModel === m ? 'selected' : ''}>${m}</option>`).join('')}
+                                </select>
+                            </div>
                         </div>
                     </div>
                     
                     <div style="margin-bottom: 10px;">
-                        <div class="config-label" style="margin-bottom: 5px;">Timeframes</div>
-                        <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                        <div class="config-label" style="margin-bottom: 5px;">时间周期</div>
+                        <div class="timeframe-select">
                             ${timeframes.map(tf => `
-                                <label style="display: flex; align-items: center; gap: 3px; cursor: pointer; font-size: 11px; padding: 3px 6px; background: ${node.timeframes.includes(tf) ? 'rgba(79, 209, 197, 0.2)' : 'var(--bg-dark)'}; border-radius: 4px; border: 1px solid ${node.timeframes.includes(tf) ? 'var(--primary)' : 'var(--border)'};">
+                                <label class="${node.timeframes.includes(tf) ? 'selected' : ''}">
                                     <input type="checkbox" ${node.timeframes.includes(tf) ? 'checked' : ''} 
-                                        onchange="toggleFocusTimeframe(${node.slot}, '${tf}')" style="accent-color: var(--primary);">
+                                        onchange="toggleFocusTimeframe(${node.slot}, '${tf}')" style="display:none;">
                                     ${tf}
                                 </label>
                             `).join('')}
@@ -746,7 +825,7 @@
                     </div>
                     
                     <div class="node-toggle">
-                        <span style="font-size: 12px; color: var(--text-dim);">ENABLE MONITORING</span>
+                        <span style="font-size: 12px; color: #a0aec0;">启用监控</span>
                         <div class="toggle-switch ${node.enabled ? 'active' : ''}" onclick="toggleFocusNode(${node.slot})"></div>
                     </div>
                 </div>
@@ -760,6 +839,23 @@
             return focusNodes.some(n => n.slot !== currentSlot && n.symbol === symbol);
         }
         
+        // 获取过滤后的节点币种列表
+        function getFilteredNodeSymbols(node) {
+            const searchTerm = (node.searchTerm || '').toUpperCase().trim();
+            if (!searchTerm) return allSymbols;
+            return allSymbols.filter(s => s.symbol.includes(searchTerm));
+        }
+        
+        // 过滤节点币种
+        function filterNodeSymbols(slot) {
+            const node = focusNodes.find(n => n.slot === slot);
+            if (node) {
+                const searchInput = document.getElementById(`nodeSearch-${slot}`);
+                node.searchTerm = searchInput.value;
+                renderFocusNodes();
+            }
+        }
+        
         // 更新重点节点
         function updateFocusNode(slot, field, value) {
             const node = focusNodes.find(n => n.slot === slot);
@@ -769,7 +865,9 @@
                     renderSymbolMatrix();
                 }
                 renderFocusNodes();
-                addLog('CONFIG', `NODE-0${slot} ${field} set to ${value}`, 'info');
+                const fieldNames = {symbol: '币种', strategy: '策略', aiModel: 'AI模型'};
+                addLog('配置', `节点-0${slot} ${fieldNames[field] || field} 设置为 ${value}`, 'info');
+                saveSignalConfig();  // 自动保存
             }
         }
         
@@ -783,6 +881,7 @@
                     node.timeframes.push(tf);
                 }
                 renderFocusNodes();
+                saveSignalConfig();  // 自动保存
             }
         }
         
@@ -792,14 +891,15 @@
             if (node) {
                 node.enabled = !node.enabled;
                 renderFocusNodes();
-                addLog('SYSTEM', `NODE-0${slot} ${node.enabled ? 'ACTIVATED' : 'DEACTIVATED'}`, node.enabled ? 'success' : 'warning');
+                addLog('系统', `节点-0${slot} ${node.enabled ? '已激活' : '已停用'}`, node.enabled ? 'success' : 'warning');
+                saveSignalConfig();  // 自动保存
             }
         }
         
         // 更新已选重点币种列表显示
         function updateFocusSymbolsList() {
             const focusSyms = focusNodes.filter(n => n.symbol).map(n => n.symbol);
-            document.getElementById('focusSymbolsList').textContent = focusSyms.length > 0 ? focusSyms.join(', ') : 'NONE';
+            document.getElementById('focusSymbolsList').textContent = focusSyms.length > 0 ? focusSyms.join(', ') : '无';
         }
         
         // 渲染多币种矩阵
@@ -807,7 +907,12 @@
             const container = document.getElementById('symbolMatrix');
             const focusSyms = focusNodes.filter(n => n.symbol).map(n => n.symbol);
             
-            container.innerHTML = allSymbols.map(s => {
+            const filteredSymbols = allSymbols.filter(s => {
+                if (matrixSearchTerm && !s.symbol.includes(matrixSearchTerm)) return false;
+                return true;
+            });
+            
+            container.innerHTML = filteredSymbols.map(s => {
                 const isFocus = focusSyms.includes(s.symbol);
                 const isSelected = multiSymbols.includes(s.symbol);
                 
@@ -834,28 +939,29 @@
                 multiSymbols.push(symbol);
             }
             renderSymbolMatrix();
-            addLog('CONFIG', `${symbol} ${multiSymbols.includes(symbol) ? 'ADDED TO' : 'REMOVED FROM'} multi-symbol matrix`, 'info');
+            addLog('配置', `${symbol} ${multiSymbols.includes(symbol) ? '已添加到' : '已从'}多币种矩阵移除`, 'info');
+            saveSignalConfig();  // 自动保存
         }
         
         // 渲染多币种配置
         function renderMultiConfig() {
             // 策略选择
             document.getElementById('multiStrategy').innerHTML = `
-                <option value="">Select Strategy...</option>
+                <option value="">选择策略...</option>
                 ${strategies.map(s => `<option value="${s}" ${multiConfig.strategy === s ? 'selected' : ''}>${s}</option>`).join('')}
             `;
             
             // AI模型选择
             document.getElementById('multiAiModel').innerHTML = `
-                <option value="">Select AI Model...</option>
-                ${aiModels.map(m => `<option value="${m}" ${multiConfig.aiModel === m ? 'selected' : ''}>${m.toUpperCase()}</option>`).join('')}
+                <option value="">选择AI模型...</option>
+                ${aiModels.map(m => `<option value="${m}" ${multiConfig.aiModel === m ? 'selected' : ''}>${aiModelNames[m] || m.toUpperCase()}</option>`).join('')}
             `;
             
             // 时间周期选择
             document.getElementById('multiTimeframes').innerHTML = timeframes.map(tf => `
-                <label style="display: flex; align-items: center; gap: 3px; cursor: pointer; font-size: 11px; padding: 3px 6px; background: ${multiConfig.timeframes.includes(tf) ? 'rgba(79, 209, 197, 0.2)' : 'var(--bg-dark)'}; border-radius: 4px; border: 1px solid ${multiConfig.timeframes.includes(tf) ? 'var(--primary)' : 'var(--border)'};">
+                <label class="${multiConfig.timeframes.includes(tf) ? 'selected' : ''}">
                     <input type="checkbox" ${multiConfig.timeframes.includes(tf) ? 'checked' : ''} 
-                        onchange="toggleMultiTimeframe('${tf}')" style="accent-color: var(--primary);">
+                        onchange="toggleMultiTimeframe('${tf}')" style="display:none;">
                     ${tf}
                 </label>
             `).join('');
@@ -869,18 +975,55 @@
                 multiConfig.timeframes.push(tf);
             }
             renderMultiConfig();
+            saveSignalConfig();  // 自动保存
         }
         
         // 多币种配置变更
         document.getElementById('multiStrategy').addEventListener('change', (e) => {
             multiConfig.strategy = e.target.value;
-            addLog('CONFIG', `Multi-symbol strategy set to ${e.target.value}`, 'info');
+            addLog('配置', `多币种策略设置为 ${e.target.value}`, 'info');
+            saveSignalConfig();  // 自动保存
         });
         
         document.getElementById('multiAiModel').addEventListener('change', (e) => {
             multiConfig.aiModel = e.target.value;
-            addLog('CONFIG', `Multi-symbol AI model set to ${e.target.value}`, 'info');
+            addLog('配置', `多币种AI模型设置为 ${aiModelNames[e.target.value] || e.target.value}`, 'info');
+            saveSignalConfig();  // 自动保存
         });
+        
+        // 多币种矩阵搜索过滤
+        let matrixSearchTerm = '';
+        function filterMatrixSymbols() {
+            const searchInput = document.getElementById('matrixSearch');
+            matrixSearchTerm = searchInput.value.toUpperCase().trim();
+            renderSymbolMatrix();
+        }
+        
+        // 全选/取消全选多币种
+        function toggleAllMatrixSymbols(selectAll) {
+            const focusSyms = focusNodes.filter(n => n.symbol).map(n => n.symbol);
+            const visibleSymbols = allSymbols.filter(s => {
+                if (focusSyms.includes(s.symbol)) return false;
+                if (matrixSearchTerm && !s.symbol.includes(matrixSearchTerm)) return false;
+                return true;
+            });
+            
+            if (selectAll) {
+                visibleSymbols.forEach(s => {
+                    if (!multiSymbols.includes(s.symbol)) {
+                        multiSymbols.push(s.symbol);
+                    }
+                });
+                addLog('配置', `已全选 ${visibleSymbols.length} 个币种`, 'success');
+            } else {
+                visibleSymbols.forEach(s => {
+                    multiSymbols = multiSymbols.filter(ms => ms !== s.symbol);
+                });
+                addLog('配置', '已取消全选', 'info');
+            }
+            renderSymbolMatrix();
+            saveSignalConfig();  // 自动保存
+        }
         
         // 添加日志
         function addLog(source, message, type = 'info') {
@@ -921,8 +1064,8 @@
         
         // 从Socket数据添加日志
         function addLogFromSocket(data) {
-            const eventType = data.event_type || 'UNKNOWN';
-            const symbol = data.symbol || 'UNKNOWN';
+            const eventType = data.event_type || '未知';
+            const symbol = data.symbol || '未知';
             const message = data.message || JSON.stringify(data);
             
             let type = 'info';
@@ -931,28 +1074,28 @@
             switch(eventType) {
                 case 'SCAN':
                     type = 'info';
-                    formattedMsg = `SCAN ${symbol} | ${message}`;
+                    formattedMsg = `扫描 ${symbol} | ${message}`;
                     break;
                 case 'OPEN_POSITION':
                 case 'BUY':
                     type = 'signal';
-                    formattedMsg = `⚡ SIGNAL DETECTED<br>&nbsp;&nbsp;└─> SYMBOL: ${symbol}<br>&nbsp;&nbsp;└─> ACTION: <span class="log-highlight">LONG</span><br>&nbsp;&nbsp;└─> CONFIDENCE: 92%`;
+                    formattedMsg = `⚡ 检测到信号<br>&nbsp;&nbsp;└─> 币种: ${symbol}<br>&nbsp;&nbsp;└─> 操作: <span class="log-highlight">做多</span><br>&nbsp;&nbsp;└─> 置信度: 92%`;
                     break;
                 case 'SELL':
                     type = 'signal';
-                    formattedMsg = `⚡ SIGNAL DETECTED<br>&nbsp;&nbsp;└─> SYMBOL: ${symbol}<br>&nbsp;&nbsp;└─> ACTION: <span class="log-highlight">SHORT</span><br>&nbsp;&nbsp;└─> CONFIDENCE: 88%`;
+                    formattedMsg = `⚡ 检测到信号<br>&nbsp;&nbsp;└─> 币种: ${symbol}<br>&nbsp;&nbsp;└─> 操作: <span class="log-highlight">做空</span><br>&nbsp;&nbsp;└─> 置信度: 88%`;
                     break;
                 case 'SKIP':
                     type = 'warning';
-                    formattedMsg = `⚠️ AI FILTER | ${symbol} | ${message}`;
+                    formattedMsg = `⚠️ AI过滤 | ${symbol} | ${message}`;
                     break;
                 case 'TELEGRAM':
                     type = 'success';
-                    formattedMsg = `📡 TELEGRAM ALERT SENT [OK]`;
+                    formattedMsg = `📡 Telegram提醒已发送 [成功]`;
                     break;
                 case 'ERROR':
                     type = 'error';
-                    formattedMsg = `❌ ERROR | ${message}`;
+                    formattedMsg = `❌ 错误 | ${message}`;
                     break;
             }
             
@@ -976,14 +1119,14 @@
         // 清空日志
         function clearLogs() {
             const terminal = document.getElementById('terminalBody');
-            terminal.innerHTML = '<div class="log-line"><span class="log-time">[SYSTEM]</span> Terminal cleared. <span class="cursor"></span></div>';
+            terminal.innerHTML = '<div class="log-line"><span class="log-time">[系统]</span> 终端已清空 <span class="cursor"></span></div>';
         }
         
         // 暂停/恢复日志
         function pauseLogs() {
             isPaused = !isPaused;
-            document.getElementById('pauseBtn').textContent = isPaused ? 'RESUME' : 'PAUSE';
-            addLog('SYSTEM', isPaused ? 'Log streaming PAUSED' : 'Log streaming RESUMED', isPaused ? 'warning' : 'success');
+            document.getElementById('pauseBtn').textContent = isPaused ? '继续' : '暂停';
+            addLog('系统', isPaused ? '日志流已暂停' : '日志流已恢复', isPaused ? 'warning' : 'success');
         }
         
         // 更新统计
