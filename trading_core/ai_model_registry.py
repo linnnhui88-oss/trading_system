@@ -22,6 +22,13 @@ AI_MODELS = {
         "label": "OpenAI GPT",
         "provider_name": "OpenAI",
         "default_model_name": "gpt-4o-mini",
+        "model_options": [
+            "gpt-4o-mini",
+            "gpt-4.1-mini",
+            "gpt-4.1",
+            "gpt-4o",
+            "o4-mini",
+        ],
         "supports_custom_base_url": True,
         "requires_api_key": True,
         "description": "OpenAI GPT 系列模型，适合通用分析和结构化输出。",
@@ -32,6 +39,13 @@ AI_MODELS = {
         "label": "Google Gemini",
         "provider_name": "Google",
         "default_model_name": "gemini-1.5-pro",
+        "model_options": [
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+        ],
         "supports_custom_base_url": False,
         "requires_api_key": True,
         "description": "Google Gemini 系列模型，适合文本分析与多模态扩展。",
@@ -42,6 +56,13 @@ AI_MODELS = {
         "label": "Anthropic Claude",
         "provider_name": "Anthropic",
         "default_model_name": "claude-3-5-sonnet-20241022",
+        "model_options": [
+            "claude-3-5-haiku-20241022",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-7-sonnet-20250219",
+            "claude-sonnet-4-20250514",
+            "claude-opus-4-20250514",
+        ],
         "supports_custom_base_url": False,
         "requires_api_key": True,
         "description": "Anthropic Claude 系列模型，适合长文本分析与稳健判断。",
@@ -52,6 +73,13 @@ AI_MODELS = {
         "label": "阿里千问",
         "provider_name": "Alibaba Cloud",
         "default_model_name": "qwen-plus",
+        "model_options": [
+            "qwen-turbo",
+            "qwen-plus",
+            "qwen-max",
+            "qwen-long",
+            "qwen2.5-72b-instruct",
+        ],
         "supports_custom_base_url": True,
         "requires_api_key": True,
         "description": "阿里千问系列模型，适合中文场景和通用推理。",
@@ -62,6 +90,13 @@ AI_MODELS = {
         "label": "Kimi",
         "provider_name": "Moonshot AI",
         "default_model_name": "moonshot-v1-8k",
+        "model_options": [
+            "moonshot-v1-8k",
+            "moonshot-v1-32k",
+            "moonshot-v1-128k",
+            "kimi-k2-0711-preview",
+            "kimi-latest",
+        ],
         "supports_custom_base_url": True,
         "requires_api_key": True,
         "description": "Kimi 模型，适合中文长文本理解与分析。",
@@ -72,6 +107,13 @@ AI_MODELS = {
         "label": "DeepSeek",
         "provider_name": "DeepSeek",
         "default_model_name": "deepseek-chat",
+        "model_options": [
+            "deepseek-chat",
+            "deepseek-reasoner",
+            "deepseek-v3",
+            "deepseek-r1",
+            "deepseek-coder",
+        ],
         "supports_custom_base_url": True,
         "requires_api_key": True,
         "description": "DeepSeek 模型，适合推理和代码分析，也可用于交易信号辅助判断。",
@@ -117,8 +159,28 @@ def get_ai_model_choices():
             "label": item["label"],
             "provider_name": item["provider_name"],
             "default_model_name": item["default_model_name"],
+            "model_options": item.get("model_options", [item["default_model_name"]]),
         })
     return choices
+
+
+def get_model_options(provider_key: str):
+    """
+    返回 provider 可选的模型白名单
+    """
+    model = get_ai_model(provider_key)
+    if not model:
+        return []
+    return list(model.get("model_options", [model["default_model_name"]]))
+
+
+def is_supported_model_name(provider_key: str, model_name: str) -> bool:
+    """
+    判断 model_name 是否在指定 provider 的白名单中
+    """
+    if not provider_key or not model_name:
+        return False
+    return model_name in get_model_options(provider_key)
 
 
 def build_default_provider_config(provider_key: str):
@@ -137,6 +199,7 @@ def build_default_provider_config(provider_key: str):
         "api_key": "",
         "base_url": "",
         "model_name": model["default_model_name"],
+        "model_options": list(model.get("model_options", [model["default_model_name"]])),
         "is_enabled": False,
         "configured": False,
         "selectable": False,

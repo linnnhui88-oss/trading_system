@@ -23,6 +23,8 @@ from trading_core.ai_model_registry import (
     build_default_provider_config,
     get_all_ai_models,
     get_ai_model,
+    get_model_options,
+    is_supported_model_name,
     is_supported_ai_model,
 )
 
@@ -129,6 +131,9 @@ class AIProviderConfigManager:
         api_key = (api_key or "").strip()
         base_url = (base_url or "").strip()
         model_name = (model_name or meta["default_model_name"]).strip()
+        if not is_supported_model_name(provider_key, model_name):
+            allowed = ", ".join(get_model_options(provider_key))
+            raise ValueError(f"{provider_key} 的 model_name 不合法，可选值: {allowed}")
 
         with self.lock:
             conn = self._get_conn()
@@ -214,6 +219,7 @@ class AIProviderConfigManager:
             "is_enabled": enabled,
             "configured": configured,
             "selectable": configured and enabled,
+            "model_options": get_model_options(row[0]),
             "created_at": row[7],
             "updated_at": row[8],
         }
@@ -249,6 +255,7 @@ class AIProviderConfigManager:
                 "selectable": item["selectable"],
                 "masked_api_key": item["masked_api_key"],
                 "base_url": item["base_url"],
+                "model_options": item.get("model_options", []),
                 "updated_at": item["updated_at"],
             })
         return items

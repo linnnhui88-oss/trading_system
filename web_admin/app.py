@@ -61,15 +61,6 @@ _strategy_config_repo = None
 _market_subscriptions = {}
 _market_subscriptions_lock = Lock()
 
-AI_PROVIDER_FIELD_MAP = {
-    'gpt_api_key': 'gpt',
-    'gemini_api_key': 'gemini',
-    'claude_api_key': 'claude',
-    'qwen_api_key': 'qwen',
-    'kimi_api_key': 'kimi',
-    'deepseek_api_key': 'deepseek',
-}
-
 def normalize_symbol(symbol: str, default: str = 'BTCUSDT') -> str:
     normalized = (symbol or '').strip().upper().replace('/', '')
     return normalized or default
@@ -767,12 +758,6 @@ def get_settings():
             'max_positions_count': risk_manager.max_positions_count,
         }
 
-        # 从 ai_provider_configs 回显多模型 API Key
-        ai_manager = get_ai_config_manager()
-        for field, provider_key in AI_PROVIDER_FIELD_MAP.items():
-            provider_config = ai_manager.get_provider_config(provider_key) or {}
-            settings[field] = provider_config.get('api_key', '')
-
         return jsonify({'success': True, 'data': settings})
     except Exception as e:
         logger.error(f"获取设置失败: {e}")
@@ -884,19 +869,6 @@ def save_settings():
             if data.get('telegram_chat_id'):
                 os.environ['TELEGRAM_CHAT_ID'] = data['telegram_chat_id']
 
-            # 同步保存 AI provider 配置
-            ai_manager = get_ai_config_manager()
-            for field, provider_key in AI_PROVIDER_FIELD_MAP.items():
-                api_key = (data.get(field) or '').strip()
-                current = ai_manager.get_provider_config(provider_key) or {}
-                ai_manager.save_provider_config(
-                    provider_key=provider_key,
-                    api_key=api_key,
-                    base_url=current.get('base_url', ''),
-                    model_name=current.get('model_name', ''),
-                    is_enabled=bool(api_key)
-                )
-            
             logger.info("✅ 运行中组件和环境变量已更新")
         except Exception as e:
             logger.warning(f"运行中组件更新失败（将在重启后生效）: {e}")

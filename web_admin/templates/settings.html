@@ -340,43 +340,8 @@
         </div>
 
         <div class="card">
-            <h3>🧠 AI 大模型配置</h3>
-            <p class="info-text" style="margin-bottom: 20px;">配置后即可在"信号监控"页面自由切换AI大脑。只需填写API Key即可启用对应模型，未填写的模型在选择时将呈灰色不可选状态。</p>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>OpenAI (GPT) API Key</label>
-                    <input type="password" id="gptApiKey" placeholder="sk-...">
-                </div>
-                <div class="form-group">
-                    <label>Gemini API Key</label>
-                    <input type="password" id="geminiApiKey" placeholder="AIza...">
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Claude API Key</label>
-                    <input type="password" id="claudeApiKey" placeholder="sk-ant-...">
-                </div>
-                <div class="form-group">
-                    <label>DeepSeek API Key</label>
-                    <input type="password" id="deepseekApiKey" placeholder="sk-...">
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>阿里千问 (Qwen) API Key</label>
-                    <input type="password" id="qwenApiKey" placeholder="sk-...">
-                </div>
-                <div class="form-group">
-                    <label>月之暗面 (Kimi) API Key</label>
-                    <input type="password" id="kimiApiKey" placeholder="sk-...">
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
             <h3>🧩 模型提供商管理</h3>
-            <p class="info-text" style="margin-bottom: 12px;">可单独管理每个模型的 Key / Base URL / Model Name，并支持测试与禁用。</p>
+            <p class="info-text" style="margin-bottom: 12px;">统一在这里管理每个模型提供商的 API Key、Base URL 和模型版本。模型版本已限制为预置主流选项，并支持测试与禁用。</p>
             <div id="providerGrid" class="provider-grid"></div>
         </div>
 
@@ -499,6 +464,14 @@
 
     <script>
         const socket = io();
+        const providerModelFallbacks = {
+            gpt: ['gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-4o', 'o4-mini'],
+            gemini: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+            claude: ['claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022', 'claude-3-7-sonnet-20250219', 'claude-sonnet-4-20250514', 'claude-opus-4-20250514'],
+            qwen: ['qwen-turbo', 'qwen-plus', 'qwen-max', 'qwen-long', 'qwen2.5-72b-instruct'],
+            kimi: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi-k2-0711-preview', 'kimi-latest'],
+            deepseek: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v3', 'deepseek-r1', 'deepseek-coder']
+        };
         
         socket.on('connect', function() {
             console.log('[Settings] Socket connected');
@@ -555,19 +528,28 @@
                     setElementValue('telegramToken', settings.telegram_bot_token || '');
                     setElementValue('telegramChatId', settings.telegram_chat_id || '');
                     
-                    // 新增的 AI 大模型 API Key 回显读取
-                    setElementValue('gptApiKey', settings.gpt_api_key || '');
-                    setElementValue('geminiApiKey', settings.gemini_api_key || '');
-                    setElementValue('claudeApiKey', settings.claude_api_key || '');
-                    setElementValue('qwenApiKey', settings.qwen_api_key || '');
-                    setElementValue('kimiApiKey', settings.kimi_api_key || '');
-                    setElementValue('deepseekApiKey', settings.deepseek_api_key || '');
                 }
                 await loadProviderCards();
             } catch (e) {
                 console.error('加载设置失败:', e);
                 showAlert('加载设置失败: ' + e.message, 'error');
             }
+        }
+
+        function buildModelOptions(item, selectedValue) {
+            const current = selectedValue || item.model_name || '';
+            const fallbackOptions = providerModelFallbacks[item.provider_key] || [];
+            const sourceOptions = Array.isArray(item.model_options) && item.model_options.length > 0
+                ? item.model_options
+                : fallbackOptions;
+            const options = [...new Set([...(sourceOptions || []), ...(current ? [current] : [])])];
+            if (options.length === 0) {
+                return '<option value="">暂无可选模型</option>';
+            }
+            return options.map(name => {
+                const selected = name === current ? 'selected' : '';
+                return `<option value="${name}" ${selected}>${name}</option>`;
+            }).join('');
         }
 
         async function loadProviderCards() {
@@ -597,7 +579,10 @@
                         </div>
                         <div class="form-group">
                             <label>Model Name</label>
-                            <input type="text" id="provider_model_${item.provider_key}" value="${item.model_name || ''}" placeholder="可选">
+                            <select id="provider_model_${item.provider_key}">
+                                ${buildModelOptions(item, item.model_name || '')}
+                            </select>
+                            <p class="info-text">已限制为当前提供商的主流模型选项。</p>
                         </div>
                         <div class="provider-actions">
                             <button class="btn btn-primary" onclick="saveProvider('${item.provider_key}')">保存</button>
@@ -615,7 +600,11 @@
                             const d = detailPayload.data || {};
                             setElementValue(`provider_key_${item.provider_key}`, d.api_key || '');
                             setElementValue(`provider_url_${item.provider_key}`, d.base_url || '');
-                            setElementValue(`provider_model_${item.provider_key}`, d.model_name || '');
+                            const modelSelect = document.getElementById(`provider_model_${item.provider_key}`);
+                            if (modelSelect) {
+                                modelSelect.innerHTML = buildModelOptions(d, d.model_name || '');
+                                modelSelect.value = d.model_name || '';
+                            }
                         }
                     } catch (_) {}
                 }
@@ -696,15 +685,7 @@
                 api_key: document.getElementById('apiKey').value,
                 api_secret: document.getElementById('apiSecret').value,
                 telegram_token: document.getElementById('telegramToken').value,
-                telegram_chat_id: document.getElementById('telegramChatId').value,
-                
-                // 提交新增的 AI 大模型 API Key 数据
-                gpt_api_key: document.getElementById('gptApiKey').value,
-                gemini_api_key: document.getElementById('geminiApiKey').value,
-                claude_api_key: document.getElementById('claudeApiKey').value,
-                qwen_api_key: document.getElementById('qwenApiKey').value,
-                kimi_api_key: document.getElementById('kimiApiKey').value,
-                deepseek_api_key: document.getElementById('deepseekApiKey').value
+                telegram_chat_id: document.getElementById('telegramChatId').value
             };
 
             try {
