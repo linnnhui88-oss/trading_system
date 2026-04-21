@@ -4,7 +4,6 @@ import os
 import time
 import uuid
 from datetime import datetime
-from logging.handlers import RotatingFileHandler
 
 class QuantJSONFormatter(logging.Formatter):
     """自定义 JSON 日志格式化器，专为量化系统设计"""
@@ -40,13 +39,8 @@ def setup_signal_logger():
     
     print(f"[StrategyLogger] Log file: {log_file}")
     
-    # 存入专门的信号日志文件（使用轮转，最大50MB，保留3个备份）
-    file_handler = RotatingFileHandler(
-        log_file, 
-        maxBytes=50*1024*1024,  # 50MB
-        backupCount=3,
-        encoding='utf-8'
-    )
+    # 存入专门的信号日志文件
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
     file_handler.setFormatter(QuantJSONFormatter())
     logger.addHandler(file_handler)
     

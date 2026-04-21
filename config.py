@@ -4,11 +4,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    # Exchange API Configuration (支持多种环境变量名)
+    # Exchange API Configuration
     EXCHANGE_ID = os.getenv('EXCHANGE_ID', 'binance')
-    # 优先使用 BINANCE_API_KEY，如果不存在则使用 API_KEY
-    API_KEY = os.getenv('BINANCE_API_KEY') or os.getenv('API_KEY', '')
-    API_SECRET = os.getenv('BINANCE_SECRET_KEY') or os.getenv('API_SECRET', '')
+    API_KEY = os.getenv('API_KEY', '')
+    API_SECRET = os.getenv('API_SECRET', '')
     
     # Trading Configuration
     SYMBOL = os.getenv('SYMBOL', 'BTC/USDT')
@@ -20,14 +19,6 @@ class Config:
     TAKE_PROFIT_PERCENT = float(os.getenv('TAKE_PROFIT_PERCENT', '4.0'))
     TRAILING_STOP_PERCENT = float(os.getenv('TRAILING_STOP_PERCENT', '1.0'))
     MAX_POSITION_SIZE = float(os.getenv('MAX_POSITION_SIZE', '1000'))
-    
-    # AI Models API Configuration
-    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-    CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY', '')
-    QWEN_API_KEY = os.getenv('QWEN_API_KEY', '')
-    KIMI_API_KEY = os.getenv('KIMI_API_KEY', '')
-    DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
     
     # Email Notification
     EMAIL_ENABLED = os.getenv('EMAIL_ENABLED', 'false').lower() == 'true'

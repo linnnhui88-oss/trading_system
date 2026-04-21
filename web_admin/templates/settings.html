@@ -256,48 +256,12 @@
         .danger-zone h3 {
             color: #f56565;
         }
-
-        .provider-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 15px;
-        }
-
-        .provider-card {
-            background: #0d1117;
-            border: 1px solid #2d3748;
-            border-radius: 10px;
-            padding: 15px;
-        }
-
-        .provider-title {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .provider-title strong {
-            color: #4fd1c5;
-        }
-
-        .provider-status {
-            font-size: 12px;
-            color: #a0aec0;
-        }
-
-        .provider-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-            flex-wrap: wrap;
-        }
     </style>
 </head>
 <body>
     <header class="header">
         <div class="header-top">
-            <h1>📈 自动化交易生存指南-量化交易系统<V1 class="0">v2.0</V1></h1>
+            <h1>📈 自动化交易生存指南-量化交易系统<V1 class="0">v1.0</V1></h1>
             <div class="connection-status">
                 <span class="status-indicator status-offline" id="connectionStatus"></span>
                 <span id="connectionText">连接中...</span>
@@ -314,8 +278,9 @@
     <div class="container">
         <div id="alertBox" class="alert"></div>
 
+        <!-- API配置 -->
         <div class="card">
-            <h3>🔑 交易所与通知配置</h3>
+            <h3>🔑 API配置</h3>
             <div class="form-row">
                 <div class="form-group">
                     <label>交易所API Key</label>
@@ -339,12 +304,7 @@
             </div>
         </div>
 
-        <div class="card">
-            <h3>🧩 模型提供商管理</h3>
-            <p class="info-text" style="margin-bottom: 12px;">统一在这里管理每个模型提供商的 API Key、Base URL 和模型版本。模型版本已限制为预置主流选项，并支持测试与禁用。</p>
-            <div id="providerGrid" class="provider-grid"></div>
-        </div>
-
+        <!-- 邮件通知配置 -->
         <div class="card">
             <h3>📧 邮件通知配置</h3>
             <div class="form-group">
@@ -379,6 +339,7 @@
             </div>
         </div>
 
+        <!-- 交易参数 -->
         <div class="card">
             <h3>⚙️ 交易参数</h3>
             <div class="form-row">
@@ -403,6 +364,7 @@
             </div>
         </div>
 
+        <!-- 止盈止损设置 -->
         <div class="card">
             <h3>🎯 止盈止损设置</h3>
             <div class="form-row">
@@ -430,6 +392,7 @@
             </div>
         </div>
 
+        <!-- 系统设置 -->
         <div class="card">
             <h3>🔧 系统设置</h3>
             <div class="form-row">
@@ -449,6 +412,7 @@
             </div>
         </div>
 
+        <!-- 危险区域 -->
         <div class="card danger-zone">
             <h3>⚠️ 危险区域</h3>
             <p style="margin-bottom: 15px; color: #a0aec0;">以下操作可能导致资金损失，请谨慎操作。</p>
@@ -456,6 +420,7 @@
             <button class="btn btn-danger" onclick="resetToDefault()">↩️ 恢复默认设置</button>
         </div>
 
+        <!-- 保存按钮 -->
         <div style="text-align: center; margin-top: 30px;">
             <button class="btn btn-primary" onclick="saveSettings()">💾 保存设置</button>
             <button class="btn btn-secondary" onclick="loadSettings()">🔄 重置</button>
@@ -463,22 +428,7 @@
     </div>
 
     <script>
-        // 优化SocketIO连接配置
-        const socket = io({
-            transports: ['websocket', 'polling'],
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            reconnectionAttempts: 10
-        });
-        const providerModelFallbacks = {
-            gpt: ['gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-4o', 'o4-mini'],
-            gemini: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'],
-            claude: ['claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022', 'claude-3-7-sonnet-20250219', 'claude-sonnet-4-20250514', 'claude-opus-4-20250514'],
-            qwen: ['qwen-turbo', 'qwen-plus', 'qwen-max', 'qwen-long', 'qwen2.5-72b-instruct'],
-            kimi: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi-k2-0711-preview', 'kimi-latest'],
-            deepseek: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v3', 'deepseek-r1', 'deepseek-coder']
-        };
+        const socket = io();
         
         socket.on('connect', function() {
             console.log('[Settings] Socket connected');
@@ -492,6 +442,7 @@
             document.getElementById('connectionText').textContent = '已断开';
         });
         
+        // 安全设置元素值
         function setElementValue(id, value, isCheckbox = false) {
             const el = document.getElementById(id);
             if (el) {
@@ -503,6 +454,7 @@
             }
         }
 
+        // 加载设置
         async function loadSettings() {
             try {
                 const response = await fetch('/api/settings');
@@ -511,7 +463,7 @@
                 if (data.success) {
                     const settings = data.data;
                     
-                    // 原有基础设置
+                    // 填充表单（安全方式）
                     setElementValue('maxPosition', settings.max_position_usdt || 1000);
                     setElementValue('maxDailyLoss', settings.max_daily_loss_usdt || 500);
                     setElementValue('leverage', settings.default_leverage || 3);
@@ -526,151 +478,15 @@
                     setElementValue('emailHost', settings.email_host || '');
                     setElementValue('emailPort', settings.email_port || 587);
                     setElementValue('emailUser', settings.email_user || '');
-                    setElementValue('emailPassword', settings.email_password || '');
                     setElementValue('emailTo', settings.email_to || '');
-
-                    // 交易所与通知配置回显
-                    setElementValue('apiKey', settings.binance_api_key || '');
-                    setElementValue('apiSecret', settings.binance_secret_key || '');
-                    setElementValue('telegramToken', settings.telegram_bot_token || '');
-                    setElementValue('telegramChatId', settings.telegram_chat_id || '');
-                    
                 }
-                await loadProviderCards();
             } catch (e) {
                 console.error('加载设置失败:', e);
                 showAlert('加载设置失败: ' + e.message, 'error');
             }
         }
 
-        function buildModelOptions(item, selectedValue) {
-            const current = selectedValue || item.model_name || '';
-            const fallbackOptions = providerModelFallbacks[item.provider_key] || [];
-            const sourceOptions = Array.isArray(item.model_options) && item.model_options.length > 0
-                ? item.model_options
-                : fallbackOptions;
-            const options = [...new Set([...(sourceOptions || []), ...(current ? [current] : [])])];
-            if (options.length === 0) {
-                return '<option value="">暂无可选模型</option>';
-            }
-            return options.map(name => {
-                const selected = name === current ? 'selected' : '';
-                return `<option value="${name}" ${selected}>${name}</option>`;
-            }).join('');
-        }
-
-        async function loadProviderCards() {
-            const container = document.getElementById('providerGrid');
-            if (!container) return;
-            try {
-                const response = await fetch('/api/ai/models');
-                const payload = await response.json();
-                if (!payload.success) {
-                    container.innerHTML = '<div class="info-text">加载模型列表失败</div>';
-                    return;
-                }
-                const items = payload.data || [];
-                container.innerHTML = items.map(item => `
-                    <div class="provider-card">
-                        <div class="provider-title">
-                            <strong>${item.label}</strong>
-                            <span class="provider-status">${item.selectable ? '可用' : (item.configured ? '已配置/禁用' : '未配置')}</span>
-                        </div>
-                        <div class="form-group">
-                            <label>API Key</label>
-                            <input type="password" id="provider_key_${item.provider_key}" placeholder="输入 API Key">
-                        </div>
-                        <div class="form-group">
-                            <label>Base URL</label>
-                            <input type="text" id="provider_url_${item.provider_key}" value="${item.base_url || ''}" placeholder="可选">
-                        </div>
-                        <div class="form-group">
-                            <label>Model Name</label>
-                            <select id="provider_model_${item.provider_key}">
-                                ${buildModelOptions(item, item.model_name || '')}
-                            </select>
-                            <p class="info-text">已限制为当前提供商的主流模型选项。</p>
-                        </div>
-                        <div class="provider-actions">
-                            <button class="btn btn-primary" onclick="saveProvider('${item.provider_key}')">保存</button>
-                            <button class="btn btn-secondary" onclick="testProvider('${item.provider_key}')">测试</button>
-                            <button class="btn btn-danger" onclick="disableProvider('${item.provider_key}')">禁用</button>
-                        </div>
-                    </div>
-                `).join('');
-
-                for (const item of items) {
-                    try {
-                        const detailResp = await fetch(`/api/ai/providers/${item.provider_key}`);
-                        const detailPayload = await detailResp.json();
-                        if (detailPayload.success) {
-                            const d = detailPayload.data || {};
-                            setElementValue(`provider_key_${item.provider_key}`, d.api_key || '');
-                            setElementValue(`provider_url_${item.provider_key}`, d.base_url || '');
-                            const modelSelect = document.getElementById(`provider_model_${item.provider_key}`);
-                            if (modelSelect) {
-                                modelSelect.innerHTML = buildModelOptions(d, d.model_name || '');
-                                modelSelect.value = d.model_name || '';
-                            }
-                        }
-                    } catch (_) {}
-                }
-            } catch (e) {
-                container.innerHTML = `<div class="info-text">加载失败: ${e.message}</div>`;
-            }
-        }
-
-        async function saveProvider(providerKey) {
-            const api_key = (document.getElementById(`provider_key_${providerKey}`)?.value || '').trim();
-            const base_url = (document.getElementById(`provider_url_${providerKey}`)?.value || '').trim();
-            const model_name = (document.getElementById(`provider_model_${providerKey}`)?.value || '').trim();
-            try {
-                const response = await fetch(`/api/ai/providers/${providerKey}`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({api_key, base_url, model_name, is_enabled: !!api_key})
-                });
-                const payload = await response.json();
-                if (payload.success) {
-                    showAlert(`${providerKey} 保存成功`, 'success');
-                    await loadProviderCards();
-                } else {
-                    showAlert(`${providerKey} 保存失败: ${payload.error || ''}`, 'error');
-                }
-            } catch (e) {
-                showAlert(`${providerKey} 保存失败: ${e.message}`, 'error');
-            }
-        }
-
-        async function testProvider(providerKey) {
-            try {
-                const response = await fetch(`/api/ai/providers/${providerKey}/test`, {method: 'POST'});
-                const payload = await response.json();
-                if (payload.success) {
-                    showAlert(`${providerKey} 测试成功`, 'success');
-                } else {
-                    showAlert(`${providerKey} 测试失败: ${payload.error || ''}`, 'error');
-                }
-            } catch (e) {
-                showAlert(`${providerKey} 测试异常: ${e.message}`, 'error');
-            }
-        }
-
-        async function disableProvider(providerKey) {
-            try {
-                const response = await fetch(`/api/ai/providers/${providerKey}/disable`, {method: 'POST'});
-                const payload = await response.json();
-                if (payload.success) {
-                    showAlert(`${providerKey} 已禁用`, 'success');
-                    await loadProviderCards();
-                } else {
-                    showAlert(`${providerKey} 禁用失败: ${payload.error || ''}`, 'error');
-                }
-            } catch (e) {
-                showAlert(`${providerKey} 禁用失败: ${e.message}`, 'error');
-            }
-        }
-
+        // 保存设置
         async function saveSettings() {
             const settings = {
                 max_position_usdt: parseFloat(document.getElementById('maxPosition').value),
@@ -706,8 +522,10 @@
                 
                 if (data.success) {
                     showAlert('设置保存成功！', 'success');
+                    // 保存成功后立即刷新显示
                     setTimeout(() => {
                         loadSettings();
+                        console.log('[Settings] Settings reloaded after save');
                     }, 500);
                 } else {
                     showAlert('保存失败: ' + (data.error || '未知错误'), 'error');
@@ -717,6 +535,7 @@
             }
         }
 
+        // 显示提示
         function showAlert(message, type) {
             const alertBox = document.getElementById('alertBox');
             alertBox.className = 'alert alert-' + type;
@@ -728,22 +547,28 @@
             }, 5000);
         }
 
+        // 清除所有数据
         function clearAllData() {
             if (!confirm('确定要清除所有交易数据吗？此操作不可恢复！')) {
                 return;
             }
+            
             fetch('/api/clear_data', {method: 'POST'})
                 .then(r => r.json())
                 .then(data => {
-                    if (data.success) showAlert('数据已清除', 'success');
+                    if (data.success) {
+                        showAlert('数据已清除', 'success');
+                    }
                 })
                 .catch(e => showAlert('清除失败: ' + e.message, 'error'));
         }
 
+        // 恢复默认设置
         function resetToDefault() {
             if (!confirm('确定要恢复默认设置吗？')) {
                 return;
             }
+            
             fetch('/api/reset_settings', {method: 'POST'})
                 .then(r => r.json())
                 .then(data => {
@@ -755,6 +580,7 @@
                 .catch(e => showAlert('重置失败: ' + e.message, 'error'));
         }
 
+        // 心跳机制
         let heartbeatInterval = null;
         let lastHeartbeatResponse = Date.now();
         
@@ -762,6 +588,7 @@
             heartbeatInterval = setInterval(() => {
                 const now = Date.now();
                 socket.emit('heartbeat', { timestamp: now, page: 'settings' });
+                console.log('[Heartbeat] Sent at', new Date().toLocaleTimeString());
                 
                 if (now - lastHeartbeatResponse > 120000) {
                     console.warn('[Heartbeat] Timeout detected');
@@ -771,12 +598,18 @@
         
         socket.on('heartbeat_ack', function(data) {
             lastHeartbeatResponse = Date.now();
+            console.log('[Heartbeat] ACK received:', data);
         });
         
+        // 页面可见性检测
         document.addEventListener('visibilitychange', function() {
-            if (!document.hidden) loadSettings();
+            if (!document.hidden) {
+                console.log('[Settings] Page visible, refreshing data...');
+                loadSettings();
+            }
         });
 
+        // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             loadSettings();
             startHeartbeat();

@@ -34,10 +34,6 @@ class ExchangeClient:
                 'proxies': {
                     'http': proxy,
                     'https': proxy,
-                },
-                'options': {
-                    'adjustForTimeDifference': True,  # 自动调整时间差
-                    'recvWindow': 60000,  # 增加接收窗口到60秒
                 }
             }
             
@@ -45,18 +41,14 @@ class ExchangeClient:
                 logger.warning("⚠️ API密钥未配置，将以只读模式运行")
                 self.exchange = ccxt.binanceus(exchange_config)
             else:
-                # 合并options而不是覆盖
-                exchange_config['apiKey'] = api_key
-                exchange_config['secret'] = secret
-                exchange_config['options']['defaultType'] = 'future'  # 使用合约交易
+                exchange_config.update({
+                    'apiKey': api_key,
+                    'secret': secret,
+                    'options': {
+                        'defaultType': 'future',  # 使用合约交易
+                    }
+                })
                 self.exchange = ccxt.binance(exchange_config)
-            
-            # 同步服务器时间
-            try:
-                self.exchange.load_time_difference()
-                logger.info(f"⏰ 时间差已同步: {self.exchange.options.get('timeDifference', 0)}ms")
-            except Exception as e:
-                logger.warning(f"⚠️ 时间同步失败: {e}")
             
             # 测试连接 - 使用公开API
             try:
@@ -319,59 +311,6 @@ class ExchangeClient:
         """获取当前价格"""
         ticker = self.get_ticker(symbol)
         return ticker['last'] if ticker else None
-
-    def get_recent_account_trades(
-        self,
-        symbol: Optional[str] = None,
-        since_ms: Optional[int] = None,
-        limit: int = 200
-    ) -> List[Dict]:
-        """Fetch recent account trades from exchange."""
-        def _fetch_once(sym: Optional[str]) -> List[Dict]:
-            kwargs = {
-                'symbol': sym if sym else None,
-                'since': since_ms,
-                'limit': limit
-            }
-            return self.exchange.fetch_my_trades(**kwargs) or []
-
-        if not symbol:
-            try:
-                return _fetch_once(None)
-            except Exception as e:
-                logger.warning(f"Fetch account trades without symbol failed: {e}")
-                return []
-
-        symbol_raw = (symbol or '').strip().upper()
-        variants = []
-        if symbol_raw:
-            variants.append(symbol_raw)
-            if '/USDT' in symbol_raw and ':USDT' not in symbol_raw:
-                variants.append(symbol_raw.replace('/USDT', '/USDT:USDT'))
-            if '/' in symbol_raw:
-                variants.append(symbol_raw.replace('/', ''))
-
-        # Try matched market symbol names from loaded markets
-        try:
-            markets = self.exchange.load_markets()
-            target_key = symbol_raw.replace('/', '').replace(':USDT', '')
-            for market_symbol in markets.keys():
-                key = market_symbol.upper().replace('/', '').replace(':USDT', '')
-                if key == target_key and market_symbol not in variants:
-                    variants.append(market_symbol)
-        except Exception:
-            pass
-
-        last_error = None
-        for sym in variants:
-            try:
-                return _fetch_once(sym)
-            except Exception as e:
-                last_error = e
-                continue
-
-        logger.warning(f"Fetch account trades failed (symbol={symbol}, variants={variants}): {last_error}")
-        return []
 
 # 单例模式
 _exchange_client = None

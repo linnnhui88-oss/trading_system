@@ -14,7 +14,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from trading_core.exchange_client import get_exchange_client
 from trading_core.risk_manager import get_risk_manager
-from trading_core.trade_fill_repository import TradeFillRepository
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +37,6 @@ class OrderExecutor:
     def __init__(self):
         self.exchange = get_exchange_client()
         self.risk_manager = get_risk_manager()
-        self.trade_fill_repo = TradeFillRepository()
         self.db_path = Path(__file__).parent.parent / 'data' / 'trade_history.db'
         self._init_db()
         self.auto_trading = False
@@ -48,19 +46,13 @@ class OrderExecutor:
         self.positions = {}
         self.positions_lock = threading.Lock()
         
-        # 数据库连接锁（线程安全）
-        self._db_lock = threading.Lock()
-        
         # 启动止盈止损监控线程
         self._monitor_thread = None
         self._stop_monitor = threading.Event()
         self._start_position_monitor()
-        
-        # 定期同步持仓（每5分钟）
-        self._start_position_sync()
     
     def _init_db(self):
-        """初始化数据库（添加索引优化）"""
+        """初始化数据库"""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -99,21 +91,13 @@ class OrderExecutor:
             )
         ''')
         
-        # 创建索引优化查询性能
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON trades(timestamp)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_signals_timestamp ON signals(timestamp)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol)')
-        
         conn.commit()
         conn.close()
         logger.info("✅ 数据库初始化完成")
     
-    def execute_signal(self, symbol: str, timeframe: str, action: str,
+    def execute_signal(self, symbol: str, timeframe: str, action: str, 
                        price: float, rsi: float = 50, confidence: float = 1.0,
-                       strategy: str = 'MA99_MTF', ai_model: str = '',
-                       ai_decision: str = 'EXECUTE', signal_source: str = 'strategy_signal',
-                       signal_reason: str = '') -> bool:
+                       strategy: str = 'MA99_MTF') -> bool:
         """
         执行交易信号
         
@@ -184,20 +168,8 @@ class OrderExecutor:
             logger.info(f"持仓记录: {symbol} {action} 数量{amount} 止损{stop_loss} 止盈{take_profit}")
             
             # 记录交易
-            self._record_trade(
-                symbol,
-                action,
-                amount,
-                price,
-                order['order_id'],
-                timeframe,
-                rsi,
-                strategy_name=strategy,
-                ai_model=ai_model,
-                ai_decision=ai_decision,
-                signal_source=signal_source,
-                signal_reason=signal_reason
-            )
+            self._record_trade(symbol, action, amount, price, order['order_id'], 
+                             timeframe, rsi)
             self._record_signal(symbol, timeframe, action, price, rsi, 
                               executed=True, order_id=order['order_id'])
             
@@ -209,245 +181,105 @@ class OrderExecutor:
             logger.error("订单执行失败")
             return False
     
-    def _record_trade(self, symbol: str, action: str, amount: float,
+    def _record_trade(self, symbol: str, action: str, amount: float, 
                      price: float, order_id: str, timeframe: str, rsi: float,
-                     pnl: float = None, notes: str = None, strategy_name: str = 'MA99_MTF',
-                     ai_model: str = '', ai_decision: str = 'EXECUTE',
-                     signal_source: str = 'strategy_signal', signal_reason: str = ''):
-        """记录交易到数据库（线程安全）"""
-        with self._db_lock:
-            conn = None
-            try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                
-                cursor.execute('''
-                    INSERT INTO trades (timestamp, symbol, side, action, amount, price, 
-                                      order_id, status, strategy, timeframe, rsi, pnl, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    datetime.now().isoformat(),
-                    symbol,
-                    'buy' if action == 'LONG' else 'sell',
-                    action,
-                    amount,
-                    price,
-                    order_id,
-                    'filled',
-                    strategy_name or 'MA99_MTF',
-                    timeframe,
-                    rsi,
-                    pnl,
-                    notes
-                ))
-            
-                conn.commit()
-                conn.close()
-                self._record_trade_fill(
-                    symbol=symbol,
-                    action=action,
-                    amount=amount,
-                    price=price,
-                    order_id=order_id,
-                    timeframe=timeframe,
-                    pnl=pnl,
-                    notes=notes,
-                    strategy_name=strategy_name,
-                    ai_model=ai_model,
-                    ai_decision=ai_decision,
-                    signal_source=signal_source,
-                    signal_reason=signal_reason,
-                )
-            except Exception as e:
-                logger.error(f"记录交易失败: {e}")
-                if conn:
-                    conn.close()
-
-    def _record_trade_fill(
-        self,
-        symbol: str,
-        action: str,
-        amount: float,
-        price: float,
-        order_id: str,
-        timeframe: str,
-        pnl: float = None,
-        notes: str = None,
-        strategy_name: str = 'MA99_MTF',
-        ai_model: str = '',
-        ai_decision: str = 'EXECUTE',
-        signal_source: str = 'strategy_signal',
-        signal_reason: str = ''
-    ):
-        """Write normalized execution events into trade_fills."""
+                     pnl: float = None, notes: str = None):
+        """记录交易到数据库"""
         try:
-            action_upper = (action or "").strip().upper()
-            is_close_event = pnl is not None
-            if is_close_event:
-                side = "SELL" if action_upper == "LONG" else "BUY"
-            else:
-                side = "BUY" if action_upper == "LONG" else "SELL"
-            position_side = action_upper if action_upper in {"LONG", "SHORT"} else ""
-            order_id_str = str(order_id or "")
-            note_str = notes or ""
-
-            action_type = "open"
-            final_signal_source = signal_source or "strategy_signal"
-            if pnl is not None:
-                if order_id_str.startswith("tp_sl_"):
-                    reason = order_id_str.replace("tp_sl_", "").upper()
-                    if "TAKE_PROFIT" in reason:
-                        action_type = "take_profit"
-                    elif "STOP_LOSS" in reason:
-                        action_type = "stop_loss"
-                    else:
-                        action_type = "close"
-                    final_signal_source = "risk_manager"
-                elif order_id_str.startswith("manual_"):
-                    action_type = "manual_close"
-                    final_signal_source = "manual"
-                else:
-                    action_type = "close"
-
-            final_strategy_name = (strategy_name or '').strip() or "MA99_MTF"
-            final_ai_decision = (ai_decision or "EXECUTE").strip().upper()
-            if final_ai_decision not in {"EXECUTE", "SKIP", "REDUCE"}:
-                final_ai_decision = "EXECUTE"
-            final_signal_reason = (signal_reason or note_str or '').strip()
-
-            self.trade_fill_repo.create_fill({
-                "strategy_name": final_strategy_name,
-                "symbol": (symbol or "").replace("/", "").upper(),
-                "side": side,
-                "position_side": position_side,
-                "action_type": action_type,
-                "order_id": order_id_str,
-                "exchange_trade_id": "",
-                "quantity": float(amount or 0),
-                "price": float(price or 0),
-                "realized_pnl": float(pnl or 0),
-                "fee": 0,
-                "fee_asset": "",
-                "ai_model": (ai_model or "").strip(),
-                "ai_decision": final_ai_decision,
-                "signal_source": final_signal_source,
-                "signal_reason": final_signal_reason,
-            })
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO trades (timestamp, symbol, side, action, amount, price, 
+                                  order_id, status, strategy, timeframe, rsi, pnl, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                datetime.now().isoformat(),
+                symbol,
+                'buy' if action == 'LONG' else 'sell',
+                action,
+                amount,
+                price,
+                order_id,
+                'filled',
+                'MA99_MTF',
+                timeframe,
+                rsi,
+                pnl,
+                notes
+            ))
+            
+            conn.commit()
+            conn.close()
         except Exception as e:
-            logger.warning(f"Trade fill write skipped: {e}")
+            logger.error(f"记录交易失败: {e}")
     
     def _record_signal(self, symbol: str, timeframe: str, action: str,
                       price: float, rsi: float, executed: bool = False,
                       order_id: str = None, notes: str = None):
-        """记录信号到数据库（线程安全）"""
-        with self._db_lock:
-            conn = None
-            try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                
-                cursor.execute('''
-                    INSERT INTO signals (timestamp, symbol, timeframe, action, price, 
-                                       rsi, executed, execution_time, order_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    datetime.now().isoformat(),
-                    symbol,
-                    timeframe,
-                    action,
-                    price,
+        """记录信号到数据库"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO signals (timestamp, symbol, timeframe, action, price, 
+                                   rsi, executed, execution_time, order_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                datetime.now().isoformat(),
+                symbol,
+                timeframe,
+                action,
+                price,
                 rsi,
                 executed,
-                    datetime.now().isoformat() if executed else None,
-                    order_id
-                ))
-                
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                logger.error(f"记录信号失败: {e}")
-                if conn:
-                    conn.close()
+                datetime.now().isoformat() if executed else None,
+                order_id
+            ))
+            
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"记录信号失败: {e}")
     
     def get_recent_trades(self, limit: int = 50) -> List[Dict]:
-        """获取最近交易记录（线程安全）"""
-        with self._db_lock:
-            try:
-                conn = sqlite3.connect(self.db_path)
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-                
-                cursor.execute('''
-                    SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?
-                ''', (limit,))
-                
-                rows = cursor.fetchall()
-                conn.close()
-                
-                return [dict(row) for row in rows]
-            except Exception as e:
-                logger.error(f"获取交易记录失败: {e}")
-                return []
+        """获取最近交易记录"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?
+            ''', (limit,))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"获取交易记录失败: {e}")
+            return []
     
     def get_recent_signals(self, limit: int = 50) -> List[Dict]:
-        """获取最近信号记录（线程安全）"""
-        with self._db_lock:
-            try:
-                conn = sqlite3.connect(self.db_path)
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-                
-                cursor.execute('''
-                    SELECT * FROM signals ORDER BY timestamp DESC LIMIT ?
-                ''', (limit,))
-                
-                rows = cursor.fetchall()
-                conn.close()
-                
-                return [dict(row) for row in rows]
-            except Exception as e:
-                logger.error(f"获取信号记录失败: {e}")
-                return []
-    
-    def _start_position_sync(self):
-        """启动持仓同步线程（定期与交易所同步）"""
-        def sync_loop():
-            while not self._stop_monitor.is_set():
-                try:
-                    self._sync_positions_with_exchange()
-                except Exception as e:
-                    logger.error(f"持仓同步失败: {e}")
-                
-                # 每5分钟同步一次
-                self._stop_monitor.wait(300)
-        
-        sync_thread = threading.Thread(target=sync_loop, daemon=True)
-        sync_thread.start()
-        logger.info("🔄 持仓同步线程已启动（每5分钟）")
-    
-    def _sync_positions_with_exchange(self):
-        """与交易所同步持仓状态"""
+        """获取最近信号记录"""
         try:
-            exchange_positions = self.exchange.get_positions()
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
             
-            with self.positions_lock:
-                # 清理已不存在的持仓
-                current_symbols = {p['symbol'] for p in exchange_positions}
-                for symbol in list(self.positions.keys()):
-                    if symbol not in current_symbols:
-                        logger.info(f"持仓同步: 移除已平仓 {symbol}")
-                        del self.positions[symbol]
-                
-                # 更新现有持仓信息
-                for pos in exchange_positions:
-                    symbol = pos['symbol']
-                    if symbol in self.positions:
-                        # 更新价格和盈亏
-                        self.positions[symbol]['mark_price'] = pos.get('mark_price', 0)
-                        self.positions[symbol]['unrealized_pnl'] = pos.get('unrealized_pnl', 0)
-                        
+            cursor.execute('''
+                SELECT * FROM signals ORDER BY timestamp DESC LIMIT ?
+            ''', (limit,))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            return [dict(row) for row in rows]
         except Exception as e:
-            logger.error(f"同步持仓失败: {e}")
+            logger.error(f"获取信号记录失败: {e}")
+            return []
     
     def start_auto_trading(self):
         """启动自动交易"""
@@ -629,116 +461,6 @@ class OrderExecutor:
             logger.error("❌ 部分持仓平仓失败，请手动检查")
         
         return success
-
-    @staticmethod
-    def _normalize_symbol_key(symbol: str) -> str:
-        return (symbol or "").replace("/", "").upper().strip()
-
-    def close_position_manual(self, symbol: str) -> Dict:
-        """
-        手动平仓（单个交易对），并写入交易记录。
-        """
-        try:
-            target_key = self._normalize_symbol_key(symbol)
-            if not target_key:
-                return {'success': False, 'error': 'symbol is required'}
-
-            positions = self.exchange.get_positions()
-            target_pos = None
-            for pos in positions:
-                if self._normalize_symbol_key(pos.get('symbol', '')) == target_key:
-                    target_pos = pos
-                    break
-
-            if not target_pos:
-                return {'success': False, 'error': f'No active position found for {symbol}'}
-
-            exchange_symbol = target_pos.get('symbol', symbol)
-            side = target_pos.get('side', 'LONG')
-            amount = float(target_pos.get('contracts') or 0)
-            entry_price = float(target_pos.get('entry_price') or 0)
-
-            if amount <= 0:
-                return {'success': False, 'error': f'Invalid position size for {exchange_symbol}'}
-
-            success = self.exchange.close_position(exchange_symbol)
-            if not success:
-                return {'success': False, 'error': f'Close position failed for {exchange_symbol}'}
-
-            close_price = self.exchange.get_current_price(exchange_symbol) or float(target_pos.get('mark_price') or entry_price or 0)
-            close_price = float(close_price or 0)
-            if close_price <= 0:
-                close_price = entry_price
-
-            if side == 'LONG':
-                pnl = (close_price - entry_price) * amount
-            else:
-                pnl = (entry_price - close_price) * amount
-
-            order_id = f"manual_{int(time.time() * 1000)}"
-            notes = f"MANUAL_CLOSE {exchange_symbol} entry={entry_price:.6f} close={close_price:.6f}"
-            self._record_trade(
-                exchange_symbol,
-                side,
-                amount,
-                close_price,
-                order_id,
-                'MANUAL',
-                0,
-                pnl=pnl,
-                notes=notes
-            )
-            self.risk_manager.record_trade(pnl)
-
-            with self.positions_lock:
-                remove_keys = [k for k in self.positions.keys() if self._normalize_symbol_key(k) == target_key]
-                for key in remove_keys:
-                    del self.positions[key]
-
-            return {
-                'success': True,
-                'symbol': exchange_symbol,
-                'side': side,
-                'amount': amount,
-                'entry_price': entry_price,
-                'close_price': close_price,
-                'pnl': pnl,
-            }
-        except Exception as e:
-            logger.error(f"手动平仓失败: {e}")
-            return {'success': False, 'error': str(e)}
-
-    def close_all_positions_manual(self) -> Dict:
-        """
-        手动全平，并对每个持仓写入交易记录。
-        """
-        try:
-            positions = self.exchange.get_positions()
-            if not positions:
-                return {'success': True, 'closed_count': 0, 'failed_count': 0, 'details': []}
-
-            details = []
-            seen = set()
-            for pos in positions:
-                symbol = pos.get('symbol', '')
-                key = self._normalize_symbol_key(symbol)
-                if not key or key in seen:
-                    continue
-                seen.add(key)
-                details.append(self.close_position_manual(symbol))
-
-            closed_count = sum(1 for item in details if item.get('success'))
-            failed_count = sum(1 for item in details if not item.get('success'))
-
-            return {
-                'success': failed_count == 0,
-                'closed_count': closed_count,
-                'failed_count': failed_count,
-                'details': details,
-            }
-        except Exception as e:
-            logger.error(f"手动全平失败: {e}")
-            return {'success': False, 'closed_count': 0, 'failed_count': 0, 'details': [], 'error': str(e)}
     
     def open_position(self, symbol: str, side: str, usdt_amount: float,
                      leverage: int = 3, atr_value: float = None,

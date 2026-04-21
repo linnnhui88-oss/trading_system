@@ -1,7 +1,6 @@
 import sys
 import os
-# 使用相对路径，确保在任何机器上都能运行
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, r'C:\Users\TUF\.openclaw\workspace\trading_system')
 
 from trading_core.exchange_client import get_exchange_client
 from trading_core.risk_manager import get_risk_manager
